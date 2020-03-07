@@ -4,21 +4,18 @@ use std::hash::Hash;
 use std::io::{stdout, Write};
 use std::{thread, time};
 
-trait CellStates
-where
-    Self: Clone,
-{
+trait Cells: Clone + Eq + Hash + PartialEq {
     fn default() -> Self;
     fn update_cell(grid: &Grid<Self>, row: usize, col: usize) -> Self;
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, Eq, Hash, PartialEq)]
 enum ConwayGameOfLife {
     Dead = 0,
     Alive = 1,
 }
 
-impl CellStates for ConwayGameOfLife {
+impl Cells for ConwayGameOfLife {
     fn default() -> Self {
         Self::Dead
     }
@@ -75,15 +72,13 @@ enum Neighbor {
     TopLeft,
 }
 
-struct Grid<C: Clone + CellStates> {
+struct Grid<C: Cells> {
     nb_rows: usize,
     nb_cols: usize,
     data: Vec<C>,
 }
 
-impl<C> Grid<C>
-where
-    C: Clone + CellStates,
+impl<C: Cells> Grid<C>
 {
     fn get(&self, row: usize, col: usize) -> &C {
         if self.nb_rows <= row || self.nb_cols <= col {
@@ -162,17 +157,12 @@ where
     }
 }
 
-struct CellularAutomaton<C>
-where
-    C: PartialEq + Eq + Hash + Clone + CellStates,
-{
+struct CellularAutomaton<C: Cells> {
     grid: Grid<C>,
     display: HashMap<C, char>,
 }
 
-impl<C> CellularAutomaton<C>
-where
-    C: PartialEq + Eq + Hash + Clone + CellStates,
+impl<C: Cells> CellularAutomaton<C>
 {
     fn new(nb_rows: usize, nb_cols: usize, display: HashMap<C, char>) -> CellularAutomaton<C> {
         CellularAutomaton {
@@ -220,21 +210,18 @@ where
 
 fn main() -> Result<()> {
     let mut display = HashMap::new();
-    display.insert(ConwayGameOfLife::Dead, '.');
+    display.insert(ConwayGameOfLife::Dead, '·');
     display.insert(ConwayGameOfLife::Alive, '#');
 
     let mut conway = CellularAutomaton::<ConwayGameOfLife>::new(10, 20, display);
     conway.set_cell(3, 4, ConwayGameOfLife::Alive);
     conway.set_cell(3, 5, ConwayGameOfLife::Alive);
     conway.set_cell(3, 6, ConwayGameOfLife::Alive);
-    
     for _ in 0..100 {
         conway.print()?;
         conway.run();
         thread::sleep(time::Duration::from_millis(500));
     }
-    
-
 
     Ok(())
 }
