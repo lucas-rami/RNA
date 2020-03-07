@@ -2,92 +2,196 @@ use crossterm::{cursor, execute, queue, style, terminal, Result};
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::io::{stdout, Write};
+use std::{thread, time};
 
-type CellID = u8;
-
-struct CellData {
-    repr: char,
-}
-
-#[derive(Eq, Hash, PartialEq)]
-enum ConwayState {
-    Alive,
-    Dead,
-}
-
-struct Cells<T>
+trait CellStates
 where
-    T: Eq + Hash,
+    Self: Clone,
 {
-    states: HashMap<T, CellID>,
-    data: Vec<CellData>,
+    fn default() -> Self;
+    fn update_cell(grid: &Grid<Self>, row: usize, col: usize) -> Self;
 }
 
-impl<T> Cells<T>
-where
-    T: Eq + Hash,
-{
-    fn new(mappings: HashMap<T, CellData>) -> Cells<T> {
-        let mut states: HashMap<T, CellID> = HashMap::new();
-        let mut data = Vec::new();
-        let mut id: CellID = 0;
-        for (state, cell_data) in mappings {
-            states.insert(state, id);
-            data.push(cell_data);
-            id += 1;
+#[derive(Clone, PartialEq, Eq, Hash)]
+enum ConwayGameOfLife {
+    Dead = 0,
+    Alive = 1,
+}
+
+impl CellStates for ConwayGameOfLife {
+    fn default() -> Self {
+        Self::Dead
+    }
+
+    fn update_cell(grid: &Grid<Self>, row: usize, col: usize) -> Self {
+        // All 8 neighbors
+        let directions = [
+            Neighbor::Top,
+            Neighbor::TopRight,
+            Neighbor::Right,
+            Neighbor::BottomRight,
+            Neighbor::Bottom,
+            Neighbor::BottomLeft,
+            Neighbor::Left,
+            Neighbor::TopLeft,
+        ];
+
+        // Count the number of alive cells around us
+        let mut nb_alive_neighbors = 0;
+        for dir in directions.iter() {
+            if let Self::Alive = grid.neighbor(row, col, dir) {
+                nb_alive_neighbors += 1;
+            }
         }
 
-        Cells { states, data }
-    }
-
-    fn id(&self, state: &T) -> CellID {
-        match self.states.get(state) {
-            Some(id) => *id,
-            None => panic!("Invalid cell state."),
+        // Apply the evolution rule
+        match grid.get(row, col) {
+            Self::Dead => {
+                if nb_alive_neighbors == 3 {
+                    Self::Alive
+                } else {
+                    Self::Dead
+                }
+            }
+            Self::Alive => {
+                if nb_alive_neighbors == 2 || nb_alive_neighbors == 3 {
+                    Self::Alive
+                } else {
+                    Self::Dead
+                }
+            }
         }
-    }
-
-    fn data(&self, id: CellID) -> &CellData {
-        &self.data[id as usize]
     }
 }
 
-struct Grid<'a, T>
-where
-    T: Eq + Hash,
-{
+enum Neighbor {
+    Top,
+    TopRight,
+    Right,
+    BottomRight,
+    Bottom,
+    BottomLeft,
+    Left,
+    TopLeft,
+}
+
+struct Grid<C: Clone + CellStates> {
     nb_rows: usize,
     nb_cols: usize,
-    cells: &'a Cells<T>,
-    default_cell: T,
-    grid: Vec<CellID>,
+    data: Vec<C>,
 }
 
-impl<'a, T> Grid<'a, T>
+impl<C> Grid<C>
 where
-    T: Eq + Hash,
+    C: Clone + CellStates,
 {
-    fn new(nb_rows: usize, nb_cols: usize, cells: &Cells<T>, default_cell: T) -> Grid<T> {
-        let grid = vec![cells.id(&default_cell); nb_rows * nb_cols];
+    fn get(&self, row: usize, col: usize) -> &C {
+        if self.nb_rows <= row || self.nb_cols <= col {
+            panic!("Invalid grid index.")
+        }
+        &self.data[row * self.nb_cols + col]
+    }
+
+    fn new(nb_rows: usize, nb_cols: usize) -> Grid<C> {
         Grid {
             nb_rows,
             nb_cols,
-            cells,
-            default_cell,
-            grid,
+            data: vec![C::default(); nb_rows * nb_cols],
         }
     }
 
-    fn to_string(&self) -> Result<()> {
+    fn neighbor(&self, row: usize, col: usize, direction: &Neighbor) -> C {
+        match direction {
+            Neighbor::Top => {
+                if row == 0 {
+                    C::default()
+                } else {
+                    self.get(row - 1, col).clone()
+                }
+            }
+            Neighbor::TopRight => {
+                if row == 0 || col == self.nb_cols - 1 {
+                    C::default()
+                } else {
+                    self.get(row - 1, col + 1).clone()
+                }
+            }
+            Neighbor::Right => {
+                if col == self.nb_cols - 1 {
+                    C::default()
+                } else {
+                    self.get(row, col + 1).clone()
+                }
+            }
+            Neighbor::BottomRight => {
+                if row == self.nb_rows - 1 || col == self.nb_cols - 1 {
+                    C::default()
+                } else {
+                    self.get(row + 1, col + 1).clone()
+                }
+            }
+            Neighbor::Bottom => {
+                if row == self.nb_rows - 1 {
+                    C::default()
+                } else {
+                    self.get(row + 1, col).clone()
+                }
+            }
+            Neighbor::BottomLeft => {
+                if row == self.nb_rows - 1 || col == 0 {
+                    C::default()
+                } else {
+                    self.get(row + 1, col - 1).clone()
+                }
+            }
+            Neighbor::Left => {
+                if col == 0 {
+                    C::default()
+                } else {
+                    self.get(row, col - 1).clone()
+                }
+            }
+            Neighbor::TopLeft => {
+                if row == 0 || col == 0 {
+                    C::default()
+                } else {
+                    self.get(row - 1, col - 1).clone()
+                }
+            }
+        }
+    }
+}
+
+struct CellularAutomaton<C>
+where
+    C: PartialEq + Eq + Hash + Clone + CellStates,
+{
+    grid: Grid<C>,
+    display: HashMap<C, char>,
+}
+
+impl<C> CellularAutomaton<C>
+where
+    C: PartialEq + Eq + Hash + Clone + CellStates,
+{
+    fn new(nb_rows: usize, nb_cols: usize, display: HashMap<C, char>) -> CellularAutomaton<C> {
+        CellularAutomaton {
+            grid: Grid::new(nb_rows, nb_cols),
+            display,
+        }
+    }
+
+    fn print(&self) -> Result<()> {
         let mut stdout = stdout();
         execute!(stdout, terminal::Clear(terminal::ClearType::All))?;
-        let mut idx: usize = 0;
-        for y in 0..self.nb_rows {
-            queue!(stdout, cursor::MoveTo(0, y as u16))?;
-            for _ in 0..self.nb_cols {
-                let c = self.cells.data(self.grid[idx]).repr;
+        for row in 0..self.grid.nb_rows {
+            queue!(stdout, cursor::MoveTo(0, row as u16))?;
+            for col in 0..self.grid.nb_cols {
+                let c = match self.display.get(self.grid.get(row, col)) {
+                    Some(repr) => *repr,
+                    None => '?',
+                };
                 queue!(stdout, style::Print(c.to_string()))?;
-                idx += 1;
             }
         }
 
@@ -95,35 +199,42 @@ where
         Ok(())
     }
 
-    fn set(&mut self, row: usize, col: usize, new_state: T) -> () {
-        if self.nb_rows <= row || self.nb_cols <= col {
-            panic!("Cell index is invalid.")
+    fn run(&mut self) -> () {
+        let mut new_data = vec![];
+        for row in 0..self.grid.nb_rows {
+            for col in 0..self.grid.nb_cols {
+                new_data.push(C::update_cell(&self.grid, row, col));
+            }
         }
-        let idx = row * self.nb_cols + col;
-        self.grid[idx] = self.cells.id(&new_state)
+        self.grid.data = new_data;
     }
 
-    fn reset(&mut self) -> () {
-        self.grid = vec![self.cells.id(&self.default_cell); self.nb_rows * self.nb_cols];
+    fn set_cell(&mut self, row: usize, col: usize, new_state: C) -> () {
+        if self.grid.nb_rows <= row || self.grid.nb_cols <= col {
+            panic!("Cell index is invalid.")
+        }
+        let idx = row * self.grid.nb_cols + col;
+        self.grid.data[idx] = new_state
     }
 }
 
 fn main() -> Result<()> {
-    // Create Conway cells
-    let mut conway_cells = HashMap::new();
-    conway_cells.insert(ConwayState::Alive, CellData { repr: '#' });
-    conway_cells.insert(ConwayState::Dead, CellData { repr: '.' });
-    let conway_cells = Cells::new(conway_cells);
+    let mut display = HashMap::new();
+    display.insert(ConwayGameOfLife::Dead, '.');
+    display.insert(ConwayGameOfLife::Alive, '#');
 
-    // Create grid and set some cells
-    let mut conway_grid = Grid::new(10, 20, &conway_cells, ConwayState::Dead);
-    conway_grid.set(0, 0, ConwayState::Alive);
-    conway_grid.set(0, 1, ConwayState::Alive);
-    conway_grid.set(1, 0, ConwayState::Alive);
-    conway_grid.to_string()?;
+    let mut conway = CellularAutomaton::<ConwayGameOfLife>::new(10, 20, display);
+    conway.set_cell(3, 4, ConwayGameOfLife::Alive);
+    conway.set_cell(3, 5, ConwayGameOfLife::Alive);
+    conway.set_cell(3, 6, ConwayGameOfLife::Alive);
+    
+    for _ in 0..100 {
+        conway.print()?;
+        conway.run();
+        thread::sleep(time::Duration::from_millis(500));
+    }
+    
 
-    conway_grid.set(2, 0, ConwayState::Alive);
-    conway_grid.to_string()?;
 
     Ok(())
 }
