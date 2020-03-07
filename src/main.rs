@@ -1,4 +1,8 @@
-use crossterm::{cursor, execute, queue, style, terminal, Result};
+use crossterm::{
+    cursor, execute, queue,
+    style::{style, Attribute, Color, PrintStyledContent, StyledContent},
+    terminal, Result,
+};
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::io::{stdout, Write};
@@ -78,8 +82,7 @@ struct Grid<C: Cells> {
     data: Vec<C>,
 }
 
-impl<C: Cells> Grid<C>
-{
+impl<C: Cells> Grid<C> {
     fn get(&self, row: usize, col: usize) -> &C {
         if self.nb_rows <= row || self.nb_cols <= col {
             panic!("Invalid grid index.")
@@ -159,12 +162,15 @@ impl<C: Cells> Grid<C>
 
 struct CellularAutomaton<C: Cells> {
     grid: Grid<C>,
-    display: HashMap<C, char>,
+    display: HashMap<C, StyledContent<char>>,
 }
 
-impl<C: Cells> CellularAutomaton<C>
-{
-    fn new(nb_rows: usize, nb_cols: usize, display: HashMap<C, char>) -> CellularAutomaton<C> {
+impl<C: Cells> CellularAutomaton<C> {
+    fn new(
+        nb_rows: usize,
+        nb_cols: usize,
+        display: HashMap<C, StyledContent<char>>,
+    ) -> CellularAutomaton<C> {
         CellularAutomaton {
             grid: Grid::new(nb_rows, nb_cols),
             display,
@@ -178,10 +184,10 @@ impl<C: Cells> CellularAutomaton<C>
             queue!(stdout, cursor::MoveTo(0, row as u16))?;
             for col in 0..self.grid.nb_cols {
                 let c = match self.display.get(self.grid.get(row, col)) {
-                    Some(repr) => *repr,
-                    None => '?',
+                    Some(repr) => repr.clone(),
+                    None => style('?'),
                 };
-                queue!(stdout, style::Print(c.to_string()))?;
+                queue!(stdout, PrintStyledContent(c))?;
             }
         }
 
@@ -210,8 +216,11 @@ impl<C: Cells> CellularAutomaton<C>
 
 fn main() -> Result<()> {
     let mut display = HashMap::new();
-    display.insert(ConwayGameOfLife::Dead, '·');
-    display.insert(ConwayGameOfLife::Alive, '#');
+    display.insert(ConwayGameOfLife::Dead, style('·'));
+    display.insert(
+        ConwayGameOfLife::Alive,
+        style('#').with(Color::Blue).attribute(Attribute::Bold),
+    );
 
     let mut conway = CellularAutomaton::<ConwayGameOfLife>::new(10, 20, display);
     conway.set_cell(3, 4, ConwayGameOfLife::Alive);
