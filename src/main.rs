@@ -5,8 +5,10 @@ use crossterm::{
 };
 use std::collections::HashMap;
 use std::hash::Hash;
-use std::io::{stdout, Write};
+use std::io::{stdin, stdout, Write};
 use std::{thread, time};
+
+mod ui;
 
 trait Cells: Clone + Eq + Hash + PartialEq {
     fn default() -> Self;
@@ -166,6 +168,9 @@ struct CellularAutomaton<C: Cells> {
 }
 
 impl<C: Cells> CellularAutomaton<C> {
+    fn size(&self) -> (usize, usize) {
+        (self.grid.nb_cols, self.grid.nb_rows)
+    }
     fn new(
         nb_rows: usize,
         nb_cols: usize,
@@ -177,12 +182,21 @@ impl<C: Cells> CellularAutomaton<C> {
         }
     }
 
-    fn print(&self) -> Result<()> {
+    fn print_terminal(
+        &self,
+        term_offset: (u16, u16),
+        auto_offset: (usize, usize),
+        auto_size: (usize, usize),
+    ) -> Result<()> {
+        // Get handle to stdout
         let mut stdout = stdout();
-        execute!(stdout, terminal::Clear(terminal::ClearType::All))?;
-        for row in 0..self.grid.nb_rows {
-            queue!(stdout, cursor::MoveTo(0, row as u16))?;
-            for col in 0..self.grid.nb_cols {
+
+        for row in auto_offset.1..auto_offset.1 + auto_size.1 {
+            queue!(
+                stdout,
+                cursor::MoveTo(term_offset.0, term_offset.1 + (row as u16))
+            )?;
+            for col in auto_offset.0..auto_offset.0 + auto_size.0 {
                 let c = match self.display.get(self.grid.get(row, col)) {
                     Some(repr) => repr.clone(),
                     None => style('?'),
@@ -191,6 +205,7 @@ impl<C: Cells> CellularAutomaton<C> {
             }
         }
 
+        // Flush everything
         stdout.flush()?;
         Ok(())
     }
@@ -226,11 +241,14 @@ fn main() -> Result<()> {
     conway.set_cell(3, 4, ConwayGameOfLife::Alive);
     conway.set_cell(3, 5, ConwayGameOfLife::Alive);
     conway.set_cell(3, 6, ConwayGameOfLife::Alive);
-    for _ in 0..100 {
-        conway.print()?;
-        conway.run();
-        thread::sleep(time::Duration::from_millis(500));
-    }
+    
+   
+    let mut term_ui = ui::TerminalUI::new();
 
+    let mut tmp = String::new();
+    stdin().read_line(&mut tmp).expect("Failed to read line");
+
+    // execute!(stdout(), terminal::SetSize(100, 100))?;
+    // thread::sleep(time::Duration::from_millis(5000));
     Ok(())
 }
