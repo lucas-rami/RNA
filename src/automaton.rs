@@ -104,6 +104,15 @@ impl<C: Cells> CellularAutomaton<C> {
         self.data[idx] = new_state
     }
 
+    pub fn set_cells(&mut self, cells: &mut Vec<(usize, usize, C)>) -> () {
+        loop {
+            match cells.pop() {
+                Some(cell) => self.set_cell(cell.0, cell.1, cell.2),
+                None => break
+            }
+        }
+    }
+
     pub fn size(&self) -> (usize, usize) {
         (self.nb_cols, self.nb_rows)
     }

@@ -1,19 +1,18 @@
 use crossterm::{
-    cursor, execute, queue,
-    style::{style, Attribute, Color, PrintStyledContent, StyledContent},
-    terminal, Result,
+    style::{style, Attribute, Color},
+    Result,
 };
 use std::collections::HashMap;
-use std::hash::Hash;
-use std::io::{stdin, stdout, Write};
+
+use std::io::stdin;
 use std::{thread, time};
 
 mod automaton;
-mod ui;
 mod conway;
+mod ui;
 
 use automaton::CellularAutomaton;
-use conway::GameOfLife;
+use conway::{GameOfLife, conway_canon};
 
 
 fn main() -> Result<()> {
@@ -24,19 +23,23 @@ fn main() -> Result<()> {
         style('#').with(Color::Blue).attribute(Attribute::Bold),
     );
 
-    let mut conway = CellularAutomaton::<GameOfLife>::new(1000, 2000);
-    conway.set_cell(3, 4, GameOfLife::Alive);
-    conway.set_cell(3, 5, GameOfLife::Alive);
-    conway.set_cell(3, 6, GameOfLife::Alive);
-    
+    // let mut conway = CellularAutomaton::<GameOfLife>::new(20, 50);
+    // conway.set_cell(3, 4, GameOfLife::Alive);
+    // conway.set_cell(3, 5, GameOfLife::Alive);
+    // conway.set_cell(3, 6, GameOfLife::Alive);
+
+    let mut conway = conway_canon();
     let mut term_ui = ui::TerminalUI::new();
-    term_ui.set_auto_render_pos((4, 3));
     term_ui.draw_automaton(&conway, &display);
 
-    let mut tmp = String::new();
-    stdin().read_line(&mut tmp).expect("Failed to read line");
+    for _x in 0..1000 {
+        term_ui.draw_automaton(&conway, &display);
+        thread::sleep(time::Duration::from_millis(100));
+        conway.run();
+    }
 
-    // execute!(stdout(), terminal::SetSize(100, 100))?;
-    // thread::sleep(time::Duration::from_millis(5000));
+    let mut tmp = String::new();
+    stdin().read_line(&mut tmp)?;
+
     Ok(())
 }
