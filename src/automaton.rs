@@ -18,34 +18,6 @@ impl<C: Cells> CellularAutomaton<C> {
         }
     }
 
-    // pub fn print_terminal(
-    //     &self,
-    //     term_offset: (u16, u16),
-    //     auto_offset: (usize, usize),
-    //     auto_size: (usize, usize),
-    // ) -> Result<()> {
-    //     // Get handle to stdout
-    //     let mut stdout = stdout();
-
-    //     for row in auto_offset.1..auto_offset.1 + auto_size.1 {
-    //         queue!(
-    //             stdout,
-    //             cursor::MoveTo(term_offset.0, term_offset.1 + (row as u16))
-    //         )?;
-    //         for col in auto_offset.0..auto_offset.0 + auto_size.0 {
-    //             let c = match self.display.get(self.get_cell(row, col)) {
-    //                 Some(repr) => repr.clone(),
-    //                 None => style('?'),
-    //             };
-    //             queue!(stdout, PrintStyledContent(c))?;
-    //         }
-    //     }
-
-    //     // Flush everything
-    //     stdout.flush()?;
-    //     Ok(())
-    // }
-
     pub fn get_cell(&self, row: usize, col: usize) -> &C {
         if self.nb_rows <= row || self.nb_cols <= col {
             panic!("Invalid grid index.")

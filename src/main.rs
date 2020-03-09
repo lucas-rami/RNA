@@ -24,12 +24,14 @@ fn main() -> Result<()> {
         style('#').with(Color::Blue).attribute(Attribute::Bold),
     );
 
-    let mut conway = CellularAutomaton::<GameOfLife>::new(10, 20);
+    let mut conway = CellularAutomaton::<GameOfLife>::new(1000, 2000);
     conway.set_cell(3, 4, GameOfLife::Alive);
     conway.set_cell(3, 5, GameOfLife::Alive);
     conway.set_cell(3, 6, GameOfLife::Alive);
     
     let mut term_ui = ui::TerminalUI::new();
+    term_ui.set_auto_render_pos((4, 3));
+    term_ui.draw_automaton(&conway, &display);
 
     let mut tmp = String::new();
     stdin().read_line(&mut tmp).expect("Failed to read line");
