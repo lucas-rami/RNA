@@ -24,7 +24,7 @@ fn main() -> Result<()> {
         style('#').with(Color::Blue).attribute(Attribute::Bold),
     );
 
-    let mut conway = CellularAutomaton::<GameOfLife>::new(10, 20, display);
+    let mut conway = CellularAutomaton::<GameOfLife>::new(10, 20);
     conway.set_cell(3, 4, GameOfLife::Alive);
     conway.set_cell(3, 5, GameOfLife::Alive);
     conway.set_cell(3, 6, GameOfLife::Alive);
