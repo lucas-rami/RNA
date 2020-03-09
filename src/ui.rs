@@ -1,4 +1,5 @@
-use crossterm::{cursor, queue, style, terminal, Result};
+use crate::automaton::{CellularAutomaton, Cells};
+use crossterm::{cursor, queue, style, terminal};
 use std::io::{stdout, Stdout, Write};
 
 const HEIGHT_INFO: u16 = 10;
@@ -11,6 +12,8 @@ pub struct TerminalUI {
 }
 
 impl TerminalUI {
+    pub fn draw_automaton<C: Cells>(&self, automaton: CellularAutomaton<C>) -> () {}
+
     pub fn new() -> Self {
         let size = terminal::size().expect("Failed to read terminal size.");
         let modules = TerminalUI::create_modules(size);
