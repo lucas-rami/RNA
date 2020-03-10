@@ -9,11 +9,10 @@ use std::{thread, time};
 
 mod automaton;
 mod conway;
-mod ui;
+mod terminal_ui;
 
 use automaton::CellularAutomaton;
-use conway::{GameOfLife, conway_canon};
-
+use conway::{conway_canon, GameOfLife};
 
 fn main() -> Result<()> {
     let mut display = HashMap::new();
@@ -29,7 +28,7 @@ fn main() -> Result<()> {
     // conway.set_cell(3, 6, GameOfLife::Alive);
 
     let mut conway = conway_canon();
-    let mut term_ui = ui::TerminalUI::new();
+    let mut term_ui = terminal_ui::TerminalUI::new();
     term_ui.draw_automaton(&conway, &display);
 
     for _x in 0..1000 {
