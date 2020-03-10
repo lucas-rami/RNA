@@ -1,4 +1,6 @@
-pub trait Cells: Clone + Eq + std::hash::Hash + PartialEq {
+type AutomatonResult = Result<(), AutomatonError>;
+
+pub trait Cells: Clone {
     fn default() -> Self;
     fn update_cell(grid: &CellularAutomaton<Self>, row: usize, col: usize) -> Self;
 }
@@ -6,7 +8,10 @@ pub trait Cells: Clone + Eq + std::hash::Hash + PartialEq {
 pub struct CellularAutomaton<C: Cells> {
     nb_rows: usize,
     nb_cols: usize,
-    data: Vec<C>,
+    state: State,
+    current_gen: u64,
+    initial_state: Vec<C>,
+    automaton: Vec<C>,
 }
 
 impl<C: Cells> CellularAutomaton<C> {
@@ -14,15 +19,71 @@ impl<C: Cells> CellularAutomaton<C> {
         CellularAutomaton {
             nb_rows,
             nb_cols,
-            data: vec![C::default(); nb_rows * nb_cols],
+            state: State::Building,
+            current_gen: 0,
+            initial_state: vec![C::default(); nb_rows * nb_cols],
+            automaton: vec![],
         }
+    }
+
+    pub fn perform(&mut self, op: Operation<C>) -> AutomatonResult {
+        match self.state {
+            State::Building => match op {
+                Operation::SetCell(x, y, state) => Ok(self.set_cell(x, y, state)),
+                Operation::LockInitialState => Ok(self.lock_init_state()),
+                _ => panic!("Unsupported operation.")
+            }
+            State::Ready => match op {
+                Operation::Reset => Ok(self.reset()),
+                Operation::Run(nb_gens) => Ok(self.run(nb_gens)),
+                Operation::Step => self.perform(Operation::Run(1)),
+                Operation::Goto(gen_number) => {
+                    if gen_number < self.current_gen {
+                        panic!("Generation number smaller than current generation.")
+                    }
+                    self.perform(Operation::Run(self.current_gen - gen_number))
+                },
+                _ => panic!("Unsupported operation.")
+            }
+        }
+    }
+
+    
+    fn set_cell(&mut self, x: usize, y: usize, new_state: C) -> () {
+        if self.nb_cols <= x || self.nb_rows <= y {
+            panic!("Cell index is invalid.")
+        }
+        self.initial_state[y * self.nb_cols + x] = new_state
+    }
+
+    fn lock_init_state(&mut self) -> () {
+        self.state = State::Ready;
+        self.automaton = self.initial_state.clone();
+    }
+
+    fn reset(&mut self) -> () {
+        self.current_gen = 0;
+        self.automaton = self.initial_state.clone();
+    }
+
+    fn run(&mut self, nb_gens: u64) -> () {
+        for i in 0..nb_gens {
+            let mut new_automaton = vec![];
+            for row in 0..self.nb_rows {
+                for col in 0..self.nb_cols {
+                    new_automaton.push(C::update_cell(&self, row, col));
+                }
+            }
+            self.automaton = new_automaton;
+        }
+        self.current_gen += nb_gens
     }
 
     pub fn get_cell(&self, row: usize, col: usize) -> &C {
         if self.nb_rows <= row || self.nb_cols <= col {
             panic!("Invalid grid index.")
         }
-        &self.data[row * self.nb_cols + col]
+        &self.automaton[row * self.nb_cols + col]
     }
 
     pub fn neighbor(&self, row: usize, col: usize, direction: &Neighbor) -> C {
@@ -86,25 +147,7 @@ impl<C: Cells> CellularAutomaton<C> {
         }
     }
 
-    pub fn run(&mut self) -> () {
-        let mut new_data = vec![];
-        for row in 0..self.nb_rows {
-            for col in 0..self.nb_cols {
-                new_data.push(C::update_cell(&self, row, col));
-            }
-        }
-        self.data = new_data;
-    }
-
-    pub fn set_cell(&mut self, row: usize, col: usize, new_state: C) -> () {
-        if self.nb_rows <= row || self.nb_cols <= col {
-            panic!("Cell index is invalid.")
-        }
-        let idx = row * self.nb_cols + col;
-        self.data[idx] = new_state
-    }
-
-    pub fn set_cells(&mut self, cells: &mut Vec<(usize, usize, C)>) -> () {
+    fn set_cells(&mut self, cells: &mut Vec<(usize, usize, C)>) -> () {
         loop {
             match cells.pop() {
                 Some(cell) => self.set_cell(cell.0, cell.1, cell.2),
@@ -113,7 +156,7 @@ impl<C: Cells> CellularAutomaton<C> {
         }
     }
 
-    pub fn size(&self) -> (usize, usize) {
+    fn size(&self) -> (usize, usize) {
         (self.nb_cols, self.nb_rows)
     }
 }
@@ -128,3 +171,24 @@ pub enum Neighbor {
     Left,
     TopLeft,
 }
+
+pub enum Operation<C: Cells> {
+    // Valid in "Building" state
+    SetCell(usize, usize, C),
+    LockInitialState,
+    // Valid in "Ready" state
+    Reset,
+    Step,
+    Run(u64),
+    Goto(u64),
+}
+
+pub enum AutomatonError {
+
+}
+
+enum State {
+    Building,
+    Ready,
+}
+
