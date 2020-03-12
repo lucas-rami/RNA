@@ -8,3 +8,4 @@ edition = "2018"
 
 [dependencies]
 crossterm = "0.16"
+cascade = "0.1.4"

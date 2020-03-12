@@ -1,5 +1,3 @@
-type AutomatonResult = Result<(), AutomatonError>;
-
 pub trait Cells: Clone {
     fn default() -> Self;
     fn update_cell(grid: &CellularAutomaton<Self>, row: usize, col: usize) -> Self;
@@ -26,57 +24,26 @@ impl<C: Cells> CellularAutomaton<C> {
         }
     }
 
-    pub fn perform(&mut self, op: Operation<C>) -> AutomatonResult {
+    pub fn perform(&mut self, op: Operation<C>) -> () {
         match self.state {
             State::Building => match op {
-                Operation::SetCell(x, y, state) => Ok(self.set_cell(x, y, state)),
-                Operation::LockInitialState => Ok(self.lock_init_state()),
-                _ => panic!("Unsupported operation.")
-            }
+                Operation::SetCell(x, y, state) => self.set_cell(x, y, state),
+                Operation::LockInitialState => self.lock_init_state(),
+                _ => panic!("Unsupported operation."),
+            },
             State::Ready => match op {
-                Operation::Reset => Ok(self.reset()),
-                Operation::Run(nb_gens) => Ok(self.run(nb_gens)),
+                Operation::Reset => self.reset(),
+                Operation::Run(nb_gens) => self.run(nb_gens),
                 Operation::Step => self.perform(Operation::Run(1)),
                 Operation::Goto(gen_number) => {
                     if gen_number < self.current_gen {
                         panic!("Generation number smaller than current generation.")
                     }
                     self.perform(Operation::Run(self.current_gen - gen_number))
-                },
-                _ => panic!("Unsupported operation.")
-            }
-        }
-    }
-
-    
-    fn set_cell(&mut self, x: usize, y: usize, new_state: C) -> () {
-        if self.nb_cols <= x || self.nb_rows <= y {
-            panic!("Cell index is invalid.")
-        }
-        self.initial_state[y * self.nb_cols + x] = new_state
-    }
-
-    fn lock_init_state(&mut self) -> () {
-        self.state = State::Ready;
-        self.automaton = self.initial_state.clone();
-    }
-
-    fn reset(&mut self) -> () {
-        self.current_gen = 0;
-        self.automaton = self.initial_state.clone();
-    }
-
-    fn run(&mut self, nb_gens: u64) -> () {
-        for i in 0..nb_gens {
-            let mut new_automaton = vec![];
-            for row in 0..self.nb_rows {
-                for col in 0..self.nb_cols {
-                    new_automaton.push(C::update_cell(&self, row, col));
                 }
-            }
-            self.automaton = new_automaton;
+                _ => panic!("Unsupported operation."),
+            },
         }
-        self.current_gen += nb_gens
     }
 
     pub fn get_cell(&self, row: usize, col: usize) -> &C {
@@ -147,17 +114,38 @@ impl<C: Cells> CellularAutomaton<C> {
         }
     }
 
-    fn set_cells(&mut self, cells: &mut Vec<(usize, usize, C)>) -> () {
-        loop {
-            match cells.pop() {
-                Some(cell) => self.set_cell(cell.0, cell.1, cell.2),
-                None => break
-            }
-        }
+    pub fn size(&self) -> (usize, usize) {
+        (self.nb_cols, self.nb_rows)
     }
 
-    fn size(&self) -> (usize, usize) {
-        (self.nb_cols, self.nb_rows)
+    fn set_cell(&mut self, x: usize, y: usize, new_state: C) -> () {
+        if self.nb_cols <= x || self.nb_rows <= y {
+            panic!("Cell index is invalid.")
+        }
+        self.initial_state[y * self.nb_cols + x] = new_state
+    }
+
+    fn lock_init_state(&mut self) -> () {
+        self.state = State::Ready;
+        self.automaton = self.initial_state.clone();
+    }
+
+    fn reset(&mut self) -> () {
+        self.current_gen = 0;
+        self.automaton = self.initial_state.clone();
+    }
+
+    fn run(&mut self, nb_gens: u64) -> () {
+        for i in 0..nb_gens {
+            let mut new_automaton = vec![];
+            for row in 0..self.nb_rows {
+                for col in 0..self.nb_cols {
+                    new_automaton.push(C::update_cell(&self, row, col));
+                }
+            }
+            self.automaton = new_automaton;
+        }
+        self.current_gen += nb_gens
     }
 }
 
@@ -183,12 +171,7 @@ pub enum Operation<C: Cells> {
     Goto(u64),
 }
 
-pub enum AutomatonError {
-
-}
-
 enum State {
     Building,
     Ready,
 }
-

@@ -11,7 +11,7 @@ mod automaton;
 mod conway;
 mod terminal_ui;
 
-use automaton::CellularAutomaton;
+use automaton::{Operation};
 use conway::{conway_canon, GameOfLife};
 
 fn main() -> Result<()> {
@@ -34,7 +34,7 @@ fn main() -> Result<()> {
     for _x in 0..1000 {
         term_ui.draw_automaton(&conway, &display);
         thread::sleep(time::Duration::from_millis(100));
-        conway.run();
+        conway.perform(Operation::Step);
     }
 
     let mut tmp = String::new();

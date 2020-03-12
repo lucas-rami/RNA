@@ -6,6 +6,7 @@ use crossterm::{
 };
 use std::collections::HashMap;
 use std::io::{stdout, Stdout, Write};
+use std::hash::Hash;
 
 mod module;
 mod styled_text;
@@ -50,7 +51,7 @@ impl TerminalUI {
         self.clear_and_draw_all();
     }
 
-    pub fn draw_automaton<C: Cells>(
+    pub fn draw_automaton<C: Cells + PartialEq + Eq + Hash>(
         &mut self,
         automaton: &CellularAutomaton<C>,
         style: &HashMap<C, StyledContent<char>>,

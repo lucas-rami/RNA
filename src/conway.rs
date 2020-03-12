@@ -1,4 +1,5 @@
-use crate::automaton::{Cells, CellularAutomaton, Neighbor};
+use crate::automaton::{Cells, CellularAutomaton, Neighbor, Operation};
+use cascade::cascade;
 
 #[derive(Clone, Eq, Hash, PartialEq)]
 pub enum GameOfLife {
@@ -53,48 +54,46 @@ impl Cells for GameOfLife {
 }
 
 pub fn conway_canon() -> CellularAutomaton<GameOfLife> {
-    let mut conway = CellularAutomaton::new(200, 100); // (38, 11)
-    conway.set_cells(&mut vec![
-        // Left square
-        (5, 1, GameOfLife::Alive),
-        (6, 1, GameOfLife::Alive),
-        (5, 2, GameOfLife::Alive),
-        (6, 2, GameOfLife::Alive),
-        // Canon left
-        (5, 11, GameOfLife::Alive),
-        (6, 11, GameOfLife::Alive),
-        (7, 11, GameOfLife::Alive),
-        (4, 12, GameOfLife::Alive),
-        (8, 12, GameOfLife::Alive),
-        (3, 13, GameOfLife::Alive),
-        (9, 13, GameOfLife::Alive),
-        (3, 14, GameOfLife::Alive),
-        (9, 14, GameOfLife::Alive),
-        (6, 15, GameOfLife::Alive),
-        (4, 16, GameOfLife::Alive),
-        (8, 16, GameOfLife::Alive),
-        (5, 17, GameOfLife::Alive),
-        (6, 17, GameOfLife::Alive),
-        (7, 17, GameOfLife::Alive),
-        (6, 18, GameOfLife::Alive),
-        // Canon right
-        (3, 21, GameOfLife::Alive),
-        (4, 21, GameOfLife::Alive),
-        (5, 21, GameOfLife::Alive),
-        (3, 22, GameOfLife::Alive),
-        (4, 22, GameOfLife::Alive),
-        (5, 22, GameOfLife::Alive),
-        (2, 23, GameOfLife::Alive),
-        (6, 23, GameOfLife::Alive),
-        (1, 25, GameOfLife::Alive),
-        (2, 25, GameOfLife::Alive),
-        (6, 25, GameOfLife::Alive),
-        (7, 25, GameOfLife::Alive),
-        // Right square
-        (3, 35, GameOfLife::Alive),
-        (4, 35, GameOfLife::Alive),
-        (3, 36, GameOfLife::Alive),
-        (4, 36, GameOfLife::Alive),
-    ]);
+    let mut conway = CellularAutomaton::new(100, 200); // (38, 11)
+    conway = cascade!(
+        conway;
+        ..perform(Operation::SetCell(1, 5, GameOfLife::Alive));
+        ..perform(Operation::SetCell(1, 6, GameOfLife::Alive));
+        ..perform(Operation::SetCell(2, 5, GameOfLife::Alive));
+        ..perform(Operation::SetCell(2, 6, GameOfLife::Alive));
+        ..perform(Operation::SetCell(11, 5, GameOfLife::Alive));
+        ..perform(Operation::SetCell(11, 6, GameOfLife::Alive));
+        ..perform(Operation::SetCell(11, 7, GameOfLife::Alive));
+        ..perform(Operation::SetCell(12, 4, GameOfLife::Alive));
+        ..perform(Operation::SetCell(12, 8, GameOfLife::Alive));
+        ..perform(Operation::SetCell(13, 3, GameOfLife::Alive));
+        ..perform(Operation::SetCell(13, 9, GameOfLife::Alive));
+        ..perform(Operation::SetCell(14, 3, GameOfLife::Alive));
+        ..perform(Operation::SetCell(14, 9, GameOfLife::Alive));
+        ..perform(Operation::SetCell(15, 6, GameOfLife::Alive));
+        ..perform(Operation::SetCell(16, 4, GameOfLife::Alive));
+        ..perform(Operation::SetCell(16, 8, GameOfLife::Alive));
+        ..perform(Operation::SetCell(17, 5, GameOfLife::Alive));
+        ..perform(Operation::SetCell(17, 6, GameOfLife::Alive));
+        ..perform(Operation::SetCell(17, 7, GameOfLife::Alive));
+        ..perform(Operation::SetCell(18, 6, GameOfLife::Alive));
+        ..perform(Operation::SetCell(21, 3, GameOfLife::Alive));
+        ..perform(Operation::SetCell(21, 4, GameOfLife::Alive));
+        ..perform(Operation::SetCell(21, 5, GameOfLife::Alive));
+        ..perform(Operation::SetCell(22, 3, GameOfLife::Alive));
+        ..perform(Operation::SetCell(22, 4, GameOfLife::Alive));
+        ..perform(Operation::SetCell(22, 5, GameOfLife::Alive));
+        ..perform(Operation::SetCell(23, 2, GameOfLife::Alive));
+        ..perform(Operation::SetCell(23, 6, GameOfLife::Alive));
+        ..perform(Operation::SetCell(25, 1, GameOfLife::Alive));
+        ..perform(Operation::SetCell(25, 2, GameOfLife::Alive));
+        ..perform(Operation::SetCell(25, 6, GameOfLife::Alive));
+        ..perform(Operation::SetCell(25, 7, GameOfLife::Alive));
+        ..perform(Operation::SetCell(35, 3, GameOfLife::Alive));
+        ..perform(Operation::SetCell(35, 4, GameOfLife::Alive));
+        ..perform(Operation::SetCell(36, 3, GameOfLife::Alive));
+        ..perform(Operation::SetCell(36, 4, GameOfLife::Alive));
+        ..perform(Operation::LockInitialState);
+    );
     conway
 }
