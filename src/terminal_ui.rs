@@ -5,8 +5,8 @@ use crossterm::{
     terminal,
 };
 use std::collections::HashMap;
-use std::io::{stdout, Stdout, Write};
 use std::hash::Hash;
+use std::io::{stdout, Stdout, Write};
 
 mod module;
 mod styled_text;
@@ -18,15 +18,17 @@ type Position = (u16, u16);
 
 const HEIGHT_INFO: u16 = 10;
 
-pub struct TerminalUI {
+pub struct TerminalUI<C: Cells + PartialEq + Eq + Hash> {
     stdout: Stdout,
     size: Position,
     auto_mod: Module,
     info_mod: Module,
-    auto_render_pos: (usize, usize),
+    auto_offset: (usize, usize),
+    state: State,
+    info: Option<AutomatonInfo<C>>,
 }
 
-impl TerminalUI {
+impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
     pub fn new() -> Self {
         let size = terminal::size().expect("Failed to read terminal size.");
         let modules = Self::create_modules(size);
@@ -35,27 +37,98 @@ impl TerminalUI {
             size,
             auto_mod: modules.0,
             info_mod: modules.1,
-            auto_render_pos: (0, 0),
+            auto_offset: (0, 0),
+            state: State::NoAutomaton,
+            info: None,
         };
 
         ui.clear_and_draw_all();
         ui
     }
 
-    pub fn resize(&mut self, size: Position) -> () {
-        let modules = Self::create_modules(size);
-        self.size = size;
-        self.auto_mod = modules.0;
-        self.info_mod = modules.1;
+    pub fn perform<'a>(&mut self, op: Operation<'a, C>) -> () {
+        match self.state {
+            State::NoAutomaton => match op {
+                Operation::BindAutomaton(automaton, printer) => {
+                    self.bind_automaton(automaton, printer)
+                }
+                _ => panic!("Unsupported operation."),
+            },
+            State::Binded => match op {
+                Operation::BindAutomaton(automaton, printer) => {
+                    self.bind_automaton(automaton, printer)
+                }
+                Operation::SetState(automaton) => self.update_gen(automaton),
+                Operation::NotifyEvolution(target_gen) => self.notify_evolution(target_gen),
+                Operation::Unbind => self.unbind(),
+                _ => (),
+            },
+            State::Running(target_gen) => match op {
+                Operation::SetState(automaton) => {
+                    // Modify state and automaton title depending on generation
+                    if automaton.current_gen() >= target_gen {
+                        self.auto_mod.title.update(1, style(String::new()));
+                        self.auto_mod.draw_title(&mut self.stdout);
+                        self.state = State::Binded
+                    }
+                    self.update_gen(automaton)
+                }
+                _ => panic!("Unsupported operation."),
+            },
+        }
 
-        self.clear_and_draw_all();
+        self.cursor_to_command();
+        self.flush();
     }
 
-    pub fn draw_automaton<C: Cells + PartialEq + Eq + Hash>(
+    fn bind_automaton(
         &mut self,
         automaton: &CellularAutomaton<C>,
-        style: &HashMap<C, StyledContent<char>>,
+        printer: HashMap<C, StyledContent<char>>,
     ) -> () {
+        // Update state and create automaton info
+        self.state = State::Binded;
+        let info = AutomatonInfo::new(automaton, printer);
+        self.auto_mod.title.update(0, style(info.name.clone()));
+        self.info = Some(info);
+
+        // Draw automaton (including title)
+        self.auto_mod.draw_title(&mut self.stdout);
+        self.draw_automaton(automaton);
+    }
+
+    fn update_gen(&mut self, automaton: &CellularAutomaton<C>) -> () {
+        let auto_gen = automaton.current_gen();
+        let mut info = self.info.as_mut().unwrap();
+        if auto_gen < info.current_gen {
+            panic!("Trying to rollback automaton.")
+        }
+        info.current_gen = auto_gen;
+        self.draw_automaton(automaton)
+    }
+
+    fn notify_evolution(&mut self, target_gen: u64) -> () {
+        if target_gen <= self.info.as_mut().unwrap().current_gen {
+            panic!("Evolution cannot rollback automaton.")
+        }
+
+        self.state = State::Running(target_gen);
+        self.auto_mod.title.update(
+            1,
+            style(format!(" - running (to gen. {})", target_gen.to_string()))
+                .attribute(Attribute::SlowBlink),
+        );
+        self.auto_mod.draw_title(&mut self.stdout);
+    }
+
+    fn unbind(&mut self) -> () {
+        // Update state and automaton module's title
+        self.state = State::NoAutomaton;
+        self.auto_mod.title.update(0, style(String::new()));
+        self.auto_mod.draw_title(&mut self.stdout);
+    }
+
+    fn draw_automaton(&mut self, automaton: &CellularAutomaton<C>) -> () {
         // Get maximum render size and convert to (usize, usize)
         let max_render_size = self.auto_mod.get_render_size();
         let max_render_size = (max_render_size.0 as usize, max_render_size.1 as usize);
@@ -63,8 +136,8 @@ impl TerminalUI {
         // Determine real render size
         let auto_size = automaton.size();
         let mut render_size = (
-            auto_size.0 - self.auto_render_pos.0,
-            auto_size.1 - self.auto_render_pos.1,
+            auto_size.0 - self.auto_offset.0,
+            auto_size.1 - self.auto_offset.1,
         );
         if render_size.0 > max_render_size.0 {
             render_size.0 = max_render_size.0;
@@ -76,40 +149,75 @@ impl TerminalUI {
         // Clear module content and redraw over it
         self.auto_mod.clear_content(&mut self.stdout);
 
+        let printer = &self.info.as_ref().unwrap().printer;
         let render_pos = self.auto_mod.get_render_pos();
-        let mut row = self.auto_render_pos.1;
+        let mut row = self.auto_offset.1;
+        let mut stdout = stdout();
         for y in 0..render_size.1 {
             queue!(
-                self.stdout,
+                stdout,
                 cursor::MoveTo(render_pos.0, render_pos.1 + (y as u16))
             )
             .expect("Failed to move cursor.");
             for x in 0..render_size.0 {
-                let c = match style.get(automaton.get_cell(row, self.auto_render_pos.0 + x)) {
+                let c = match printer.get(automaton.get_cell(row, self.auto_offset.0 + x)) {
                     Some(repr) => repr.clone(),
                     None => style::style('?'),
                 };
-                queue!(self.stdout, PrintStyledContent(c)).expect("Failed to display automaton");
+                queue!(stdout, PrintStyledContent(c)).expect("Failed to display automaton");
             }
             // Next row
             row += 1
         }
 
-        // @TODO: update info module
+        // Update info module
+        let info = self.info.as_ref().unwrap();
+        let (x, y) = self.info_mod.get_render_pos();
+        let (max_len, _) = self.info_mod.get_render_size();
 
-        // Flush
-        self.cursor_to_command();
-        self.flush();
+        let generation = StyledText::from(vec![
+            style(String::from(" Generation: ")).attribute(Attribute::Italic),
+            style(info.current_gen.to_string()),
+        ]);
+        let size = StyledText::from(vec![
+            style(String::from(" Total size: ")).attribute(Attribute::Italic),
+            style(format!(
+                "({}, {})",
+                info.size.0.to_string(),
+                info.size.1.to_string()
+            )),
+        ]);
+        let view = StyledText::from(vec![
+            style(String::from(" Viewing   : ")).attribute(Attribute::Italic),
+            style(format!(
+                "({}, {}) -> ({}, {})",
+                self.auto_offset.0.to_string(),
+                self.auto_offset.1.to_string(),
+                (self.auto_offset.0 + render_size.0).to_string(),
+                (self.auto_offset.1 + render_size.1).to_string(),
+            )),
+        ]);
+
+        // Draw
+        self.info_mod.clear_content(&mut self.stdout);
+        generation.draw(&mut self.stdout, cursor::MoveTo(x, y + 1), max_len);
+        size.draw(&mut self.stdout, cursor::MoveTo(x, y + 3), max_len);
+        view.draw(&mut self.stdout, cursor::MoveTo(x, y + 5), max_len);
     }
 
-    pub fn set_auto_render_pos(&mut self, pos: (usize, usize)) -> () {
-        self.auto_render_pos = pos;
+    fn resize(&mut self, size: Position) -> () {
+        let modules = Self::create_modules(size);
+        self.size = size;
+        self.auto_mod = modules.0;
+        self.info_mod = modules.1;
+
+        self.clear_and_draw_all();
     }
 
     fn create_modules(size: Position) -> (Module, Module) {
         let height_automaton = size.1 - HEIGHT_INFO - 2;
         let auto_mod = Module::new(
-            StyledText::from(vec![style(String::from("Automaton"))]),
+            StyledText::from(vec![style(String::from("Automaton")), style(String::new())]),
             (0, 0),
             (size.0, height_automaton),
         );
@@ -147,5 +255,40 @@ impl TerminalUI {
 
     fn flush(&mut self) -> () {
         self.stdout.flush().expect("Failed to flush stdout.");
+    }
+}
+
+pub enum Operation<'a, C: Cells> {
+    BindAutomaton(&'a CellularAutomaton<C>, HashMap<C, StyledContent<char>>),
+    SetState(&'a CellularAutomaton<C>),
+    NotifyEvolution(u64),
+    Unbind,
+    // @TODO resize op
+}
+
+enum State {
+    NoAutomaton,
+    Binded,
+    Running(u64),
+}
+
+struct AutomatonInfo<C: Cells + PartialEq + Eq + Hash> {
+    name: String,
+    size: (usize, usize),
+    current_gen: u64,
+    printer: HashMap<C, StyledContent<char>>,
+}
+
+impl<C: Cells + PartialEq + Eq + Hash> AutomatonInfo<C> {
+    fn new(
+        automaton: &CellularAutomaton<C>,
+        printer: HashMap<C, StyledContent<char>>,
+    ) -> AutomatonInfo<C> {
+        AutomatonInfo {
+            name: String::from("dummy"),
+            size: automaton.size(),
+            current_gen: automaton.current_gen(),
+            printer,
+        }
     }
 }

@@ -27,7 +27,7 @@ impl<C: Cells> CellularAutomaton<C> {
     pub fn perform(&mut self, op: Operation<C>) -> () {
         match self.state {
             State::Building => match op {
-                Operation::SetCell(x, y, state) => self.set_cell(x, y, state),
+                Operation::SetCell(x, y, new_state) => self.set_cell(x, y, new_state),
                 Operation::LockInitialState => self.lock_init_state(),
                 _ => panic!("Unsupported operation."),
             },
@@ -35,11 +35,8 @@ impl<C: Cells> CellularAutomaton<C> {
                 Operation::Reset => self.reset(),
                 Operation::Run(nb_gens) => self.run(nb_gens),
                 Operation::Step => self.perform(Operation::Run(1)),
-                Operation::Goto(gen_number) => {
-                    if gen_number < self.current_gen {
-                        panic!("Generation number smaller than current generation.")
-                    }
-                    self.perform(Operation::Run(self.current_gen - gen_number))
+                Operation::Goto(gen_number) if gen_number >= self.current_gen => {
+                    self.perform(Operation::Run(gen_number - self.current_gen))
                 }
                 _ => panic!("Unsupported operation."),
             },
@@ -116,6 +113,17 @@ impl<C: Cells> CellularAutomaton<C> {
 
     pub fn size(&self) -> (usize, usize) {
         (self.nb_cols, self.nb_rows)
+    }
+
+    pub fn current_gen(&self) -> u64 {
+        self.current_gen
+    }
+
+    pub fn is_initialized(&self) -> bool {
+        match self.state {
+            State::Ready => true,
+            _ => false,
+        }
     }
 
     fn set_cell(&mut self, x: usize, y: usize, new_state: C) -> () {
