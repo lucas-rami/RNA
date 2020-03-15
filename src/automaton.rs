@@ -119,13 +119,6 @@ impl<C: Cells> CellularAutomaton<C> {
         self.current_gen
     }
 
-    pub fn is_initialized(&self) -> bool {
-        match self.state {
-            State::Ready => true,
-            _ => false,
-        }
-    }
-
     fn set_cell(&mut self, x: usize, y: usize, new_state: C) -> () {
         if self.nb_cols <= x || self.nb_rows <= y {
             panic!("Cell index is invalid.")

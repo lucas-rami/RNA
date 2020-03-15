@@ -30,10 +30,15 @@ pub struct TerminalUI<C: Cells + PartialEq + Eq + Hash> {
 
 impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
     pub fn new() -> Self {
+        // Clear terminal
+        let mut stdout = stdout();
+        queue!(stdout, terminal::Clear(terminal::ClearType::All))
+            .expect("Failed to clear terminal.");
+
         let size = terminal::size().expect("Failed to read terminal size.");
         let modules = Self::create_modules(size);
         let mut ui = Self {
-            stdout: stdout(),
+            stdout,
             size,
             auto_mod: modules.0,
             info_mod: modules.1,
@@ -42,7 +47,8 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
             info: None,
         };
 
-        ui.clear_and_draw_all();
+        ui.cursor_to_command();
+        ui.flush();
         ui
     }
 
@@ -61,15 +67,16 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
                 Operation::SetState(automaton) => self.update_gen(automaton),
                 Operation::NotifyEvolution(target_gen) => self.notify_evolution(target_gen),
                 Operation::Unbind => self.unbind(),
-                _ => (),
             },
             State::Running(target_gen) => match op {
                 Operation::SetState(automaton) => {
-                    // Modify state and automaton title depending on generation
                     if automaton.current_gen() >= target_gen {
-                        self.auto_mod.title.update(1, style(String::new()));
-                        self.auto_mod.draw_title(&mut self.stdout);
-                        self.state = State::Binded
+                        // Update state and title
+                        self.state = State::Binded;
+
+                        let mut title = self.auto_mod.get_title().clone();
+                        title.pop();
+                        self.auto_mod.set_title(title);
                     }
                     self.update_gen(automaton)
                 }
@@ -86,14 +93,16 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
         automaton: &CellularAutomaton<C>,
         printer: HashMap<C, StyledContent<char>>,
     ) -> () {
-        // Update state and create automaton info
+        // Update state
         self.state = State::Binded;
+
+        // Change automaton title and update automaton info
         let info = AutomatonInfo::new(automaton, printer);
-        self.auto_mod.title.update(0, style(info.name.clone()));
+        self.auto_mod
+            .set_title(StyledText::from(vec![style(info.name.clone())]));
         self.info = Some(info);
 
-        // Draw automaton (including title)
-        self.auto_mod.draw_title(&mut self.stdout);
+        // Draw automaton
         self.draw_automaton(automaton);
     }
 
@@ -112,20 +121,22 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
             panic!("Evolution cannot rollback automaton.")
         }
 
+        // Update state and change automaton title
         self.state = State::Running(target_gen);
-        self.auto_mod.title.update(
-            1,
+
+        let mut new_title = self.auto_mod.get_title().clone();
+        new_title.push(
             style(format!(" - running (to gen. {})", target_gen.to_string()))
-                .attribute(Attribute::SlowBlink),
+                .attribute(Attribute::SlowBlink).attribute(Attribute::Italic),
         );
-        self.auto_mod.draw_title(&mut self.stdout);
+        self.auto_mod.set_title(new_title);
     }
 
     fn unbind(&mut self) -> () {
         // Update state and automaton module's title
         self.state = State::NoAutomaton;
-        self.auto_mod.title.update(0, style(String::new()));
-        self.auto_mod.draw_title(&mut self.stdout);
+        self.auto_mod
+            .set_title(StyledText::from(vec![style(String::from("Automaton"))]));
     }
 
     fn draw_automaton(&mut self, automaton: &CellularAutomaton<C>) -> () {
@@ -147,7 +158,7 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
         }
 
         // Clear module content and redraw over it
-        self.auto_mod.clear_content(&mut self.stdout);
+        self.auto_mod.clear_content();
 
         let printer = &self.info.as_ref().unwrap().printer;
         let render_pos = self.auto_mod.get_render_pos();
@@ -199,7 +210,7 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
         ]);
 
         // Draw
-        self.info_mod.clear_content(&mut self.stdout);
+        self.info_mod.clear_content();
         generation.draw(&mut self.stdout, cursor::MoveTo(x, y + 1), max_len);
         size.draw(&mut self.stdout, cursor::MoveTo(x, y + 3), max_len);
         view.draw(&mut self.stdout, cursor::MoveTo(x, y + 5), max_len);
@@ -210,14 +221,12 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
         self.size = size;
         self.auto_mod = modules.0;
         self.info_mod = modules.1;
-
-        self.clear_and_draw_all();
     }
 
     fn create_modules(size: Position) -> (Module, Module) {
         let height_automaton = size.1 - HEIGHT_INFO - 2;
         let auto_mod = Module::new(
-            StyledText::from(vec![style(String::from("Automaton")), style(String::new())]),
+            StyledText::from(vec![style(String::from("Automaton"))]),
             (0, 0),
             (size.0, height_automaton),
         );
@@ -238,19 +247,6 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
             style::Print("> ")
         )
         .expect("Failed to move cursor to command line.");
-    }
-
-    fn clear_and_draw_all(&mut self) -> () {
-        queue!(self.stdout, terminal::Clear(terminal::ClearType::All))
-            .expect("Failed to clear terminal.");
-        self.draw_modules();
-        self.cursor_to_command();
-        self.flush();
-    }
-
-    fn draw_modules(&mut self) -> () {
-        self.auto_mod.draw(&mut self.stdout);
-        self.info_mod.draw(&mut self.stdout);
     }
 
     fn flush(&mut self) -> () {

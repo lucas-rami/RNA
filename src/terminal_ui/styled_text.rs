@@ -4,6 +4,7 @@ use crossterm::{
 };
 use std::io::{Stdout, Write};
 
+#[derive(Clone)]
 pub struct StyledText {
     text: Vec<StyledContent<String>>,
 }
@@ -15,6 +16,10 @@ impl StyledText {
 
     pub fn from(text: Vec<StyledContent<String>>) -> Self {
         Self { text }
+    }
+
+    pub fn pop(&mut self) -> () {
+        self.text.pop();
     }
 
     pub fn push(&mut self, content: StyledContent<String>) -> () {
