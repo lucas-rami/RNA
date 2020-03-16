@@ -1,4 +1,4 @@
-use super::Position;
+use super::Size;
 use crossterm::{cursor::MoveTo, queue, style::Print};
 use std::io::{stdout, Stdout, Write};
 
@@ -7,12 +7,12 @@ use crate::terminal_ui::styled_text::StyledText;
 pub struct Module {
     stdout: Stdout,
     title: StyledText,
-    pos: Position,
-    size: Position,
+    pos: Size,
+    size: Size,
 }
 
 impl Module {
-    pub fn new(title: StyledText, pos: Position, size: Position) -> Self {
+    pub fn new(title: StyledText, pos: Size, size: Size) -> Self {
         if size.0 < 3 || size.1 < 3 {
             panic!("Module size must be at least 3x3.")
         }
@@ -135,11 +135,11 @@ impl Module {
         &self.title
     }
 
-    pub fn get_render_pos(&self) -> Position {
+    pub fn get_render_pos(&self) -> Size {
         (self.pos.0 + 1, self.pos.1 + 1)
     }
 
-    pub fn get_render_size(&self) -> Position {
+    pub fn get_render_size(&self) -> Size {
         (self.size.0 - 2, self.size.1 - 2)
     }
 }

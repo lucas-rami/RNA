@@ -14,13 +14,13 @@ mod styled_text;
 use module::Module;
 use styled_text::StyledText;
 
-type Position = (u16, u16);
+type Size = (u16, u16);
 
 const HEIGHT_INFO: u16 = 10;
 
 pub struct TerminalUI<C: Cells + PartialEq + Eq + Hash> {
     stdout: Stdout,
-    size: Position,
+    size: Size,
     auto_mod: Module,
     info_mod: Module,
     auto_offset: (usize, usize),
@@ -58,6 +58,7 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
                 Operation::BindAutomaton(automaton, printer) => {
                     self.bind_automaton(automaton, printer)
                 }
+                Operation::Resize(pos) => self.resize(pos),
                 _ => panic!("Unsupported operation."),
             },
             State::Binded => match op {
@@ -67,6 +68,7 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
                 Operation::SetState(automaton) => self.update_gen(automaton),
                 Operation::NotifyEvolution(target_gen) => self.notify_evolution(target_gen),
                 Operation::Unbind => self.unbind(),
+                Operation::Resize(pos) => self.resize(pos),
             },
             State::Running(target_gen) => match op {
                 Operation::SetState(automaton) => {
@@ -80,6 +82,7 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
                     }
                     self.update_gen(automaton)
                 }
+                Operation::Resize(pos) => self.resize(pos),
                 _ => panic!("Unsupported operation."),
             },
         }
@@ -127,7 +130,8 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
         let mut new_title = self.auto_mod.get_title().clone();
         new_title.push(
             style(format!(" - running (to gen. {})", target_gen.to_string()))
-                .attribute(Attribute::SlowBlink).attribute(Attribute::Italic),
+                .attribute(Attribute::SlowBlink)
+                .attribute(Attribute::Italic),
         );
         self.auto_mod.set_title(new_title);
     }
@@ -216,14 +220,29 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
         view.draw(&mut self.stdout, cursor::MoveTo(x, y + 5), max_len);
     }
 
-    fn resize(&mut self, size: Position) -> () {
-        let modules = Self::create_modules(size);
-        self.size = size;
-        self.auto_mod = modules.0;
-        self.info_mod = modules.1;
+    fn resize(&mut self, size: Option<Size>) -> () {
+        queue!(self.stdout, terminal::Clear(terminal::ClearType::All))
+            .expect("Failed to clear terminal.");
+
+        // Recreate modules
+        let mut new_modules = match size {
+            Some(s) => Self::create_modules(s),
+            None => {
+                let s = terminal::size().expect("Failed to read terminal size.");
+                Self::create_modules(s)
+            }
+        };
+        new_modules.0.set_title(self.auto_mod.get_title().clone());
+        new_modules.1.set_title(self.info_mod.get_title().clone());
+        self.auto_mod = new_modules.0;
+        self.info_mod = new_modules.1;
+
+        // Return cursor to command
+        self.cursor_to_command();
+        self.flush();
     }
 
-    fn create_modules(size: Position) -> (Module, Module) {
+    fn create_modules(size: Size) -> (Module, Module) {
         let height_automaton = size.1 - HEIGHT_INFO - 2;
         let auto_mod = Module::new(
             StyledText::from(vec![style(String::from("Automaton"))]),
@@ -259,7 +278,7 @@ pub enum Operation<'a, C: Cells> {
     SetState(&'a CellularAutomaton<C>),
     NotifyEvolution(u64),
     Unbind,
-    // @TODO resize op
+    Resize(Option<Size>),
 }
 
 enum State {

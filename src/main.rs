@@ -36,7 +36,8 @@ fn main() -> () {
         conway.perform(Operation::Step);
         term_ui.perform(TermOP::SetState(&conway));
     }
-
+    
     let mut tmp = String::new();
     stdin().read_line(&mut tmp).expect("Failed to read stdin");
+
 }
