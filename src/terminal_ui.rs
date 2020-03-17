@@ -58,7 +58,7 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
                 Operation::BindAutomaton(automaton, printer) => {
                     self.bind_automaton(automaton, printer)
                 }
-                Operation::Resize(pos) => self.resize(pos),
+                Operation::Resize(width, height) => self.resize((width, height)),
                 _ => panic!("Unsupported operation."),
             },
             State::Binded => match op {
@@ -68,7 +68,7 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
                 Operation::SetState(automaton) => self.update_gen(automaton),
                 Operation::NotifyEvolution(target_gen) => self.notify_evolution(target_gen),
                 Operation::Unbind => self.unbind(),
-                Operation::Resize(pos) => self.resize(pos),
+                Operation::Resize(width, height) => self.resize((width, height)),
             },
             State::Running(target_gen) => match op {
                 Operation::SetState(automaton) => {
@@ -82,7 +82,7 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
                     }
                     self.update_gen(automaton)
                 }
-                Operation::Resize(pos) => self.resize(pos),
+                Operation::Resize(width, height) => self.resize((width, height)),
                 _ => panic!("Unsupported operation."),
             },
         }
@@ -220,18 +220,12 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
         view.draw(&mut self.stdout, cursor::MoveTo(x, y + 5), max_len);
     }
 
-    fn resize(&mut self, size: Option<Size>) -> () {
+    fn resize(&mut self, size: Size) -> () {
         queue!(self.stdout, terminal::Clear(terminal::ClearType::All))
             .expect("Failed to clear terminal.");
 
         // Recreate modules
-        let mut new_modules = match size {
-            Some(s) => Self::create_modules(s),
-            None => {
-                let s = terminal::size().expect("Failed to read terminal size.");
-                Self::create_modules(s)
-            }
-        };
+        let mut new_modules = Self::create_modules(size);
         new_modules.0.set_title(self.auto_mod.get_title().clone());
         new_modules.1.set_title(self.info_mod.get_title().clone());
         self.auto_mod = new_modules.0;
@@ -278,7 +272,7 @@ pub enum Operation<'a, C: Cells> {
     SetState(&'a CellularAutomaton<C>),
     NotifyEvolution(u64),
     Unbind,
-    Resize(Option<Size>),
+    Resize(u16, u16),
 }
 
 enum State {
