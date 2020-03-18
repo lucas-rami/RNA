@@ -23,7 +23,7 @@ fn main() -> () {
     let mut automaton = conway_canon();
     let mut term_ui = TerminalUI::new();
     term_ui.perform(TermOP::BindAutomaton(&automaton, printer));
-    term_ui.cmd_interpreter(&mut automaton);
+    term_ui.cmd_interpreter(&mut automaton).unwrap();
 
     // conway.perform(Operation::Goto(10));
     // term_ui.perform(TermOP::SetState(&conway));

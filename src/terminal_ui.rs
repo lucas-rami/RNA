@@ -63,9 +63,14 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
         let base_pos = cursor::position()?;
         let max_len = self.size.0 - base_pos.0;
 
+        // History
+        let mut history: Vec<Vec<char>> = vec![];
+
         // Status for current command
         let mut cmd = vec![];
+        let mut mem_cmd = vec![];
         let mut line_pos: usize = 0;
+        let mut history_idx: usize = 0;
 
         loop {
             match crossterm::event::read()? {
@@ -78,7 +83,7 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
 
                                 // Display new string
                                 queue!(
-                                    self.stdout, 
+                                    self.stdout,
                                     cursor::MoveTo(base_pos.0 + (line_pos as u16), base_pos.1),
                                     terminal::Clear(terminal::ClearType::UntilNewLine),
                                     Print::<String>((&cmd[line_pos..]).iter().collect()),
@@ -108,14 +113,14 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
 
                                 // Display new string
                                 queue!(
-                                    self.stdout, 
+                                    self.stdout,
                                     cursor::MoveTo(base_pos.0 + (line_pos as u16), base_pos.1),
                                     terminal::Clear(terminal::ClearType::UntilNewLine),
                                     Print::<String>((&cmd[line_pos..]).iter().collect()),
                                     cursor::MoveTo(base_pos.0 + (line_pos as u16), base_pos.1),
                                 )?;
                             }
-                        },
+                        }
                         KeyCode::Delete => {
                             if line_pos < cmd.len() {
                                 // Update command
@@ -123,14 +128,65 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
 
                                 // Display new string
                                 queue!(
-                                    self.stdout, 
+                                    self.stdout,
                                     terminal::Clear(terminal::ClearType::UntilNewLine),
                                     Print::<String>((&cmd[line_pos..]).iter().collect()),
                                     cursor::MoveTo(base_pos.0 + (line_pos as u16), base_pos.1),
                                 )?;
                             }
-                        },
-                        KeyCode::Enter => (),
+                        }
+                        KeyCode::Up => {
+                            if 0 < history_idx {
+                                if history_idx == history.len() {
+                                    mem_cmd = cmd;
+                                }
+                                history_idx -= 1;
+                                cmd = history[history_idx].clone();
+                                line_pos = cmd.len();
+                                queue!(
+                                    self.stdout,
+                                    cursor::MoveTo(base_pos.0, base_pos.1),
+                                    terminal::Clear(terminal::ClearType::UntilNewLine),
+                                    Print::<String>(cmd.iter().collect()),
+                                )?;
+                            }
+                        }
+                        KeyCode::Down => {
+                            if history_idx < history.len() {
+                                history_idx += 1;
+                                if history_idx == history.len() {
+                                    cmd = mem_cmd.clone()
+                                } else {
+                                    cmd = history[history_idx].clone()
+                                }
+                                line_pos = cmd.len();
+                                queue!(
+                                    self.stdout,
+                                    cursor::MoveTo(base_pos.0, base_pos.1),
+                                    terminal::Clear(terminal::ClearType::UntilNewLine),
+                                    Print::<String>(cmd.iter().collect()),
+                                )?;
+                            }
+                        }
+                        KeyCode::Enter => {
+                            if 0 < cmd.len() {
+                                // Append command to history
+                                // let cmd_str: String = cmd.iter().collect();
+                                history.push(cmd);
+
+                                // Reset status
+                                cmd = vec![];
+                                line_pos = 0;
+                                history_idx = history.len();
+
+                                // Reset command line
+                                queue!(
+                                    self.stdout,
+                                    cursor::MoveTo(base_pos.0, base_pos.1),
+                                    terminal::Clear(terminal::ClearType::UntilNewLine),
+                                )?;
+                            }
+                        }
                         KeyCode::Esc => break,
                         _ => (),
                     };
