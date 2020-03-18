@@ -74,13 +74,7 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
                         KeyCode::Char(c) => {
                             if cmd.len() < max_len as usize {
                                 // Update command
-                                let mut current = c;
-                                for idx in line_pos..cmd.len() {
-                                    let next = cmd[idx];
-                                    cmd[idx] = current;
-                                    current = next;
-                                }
-                                cmd.push(current);
+                                cmd.insert(line_pos, c);
 
                                 // Display new string
                                 queue!(
@@ -95,7 +89,7 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
                             }
                         }
                         KeyCode::Left => {
-                            if line_pos > 0 {
+                            if 0 < line_pos {
                                 queue!(self.stdout, cursor::MoveLeft(1))?;
                                 line_pos -= 1;
                             }
@@ -106,8 +100,36 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
                                 line_pos += 1;
                             }
                         }
-                        KeyCode::Backspace => (),
-                        KeyCode::Delete => (),
+                        KeyCode::Backspace => {
+                            if 0 < line_pos {
+                                // Update command
+                                cmd.remove(line_pos - 1);
+                                line_pos -= 1;
+
+                                // Display new string
+                                queue!(
+                                    self.stdout, 
+                                    cursor::MoveTo(base_pos.0 + (line_pos as u16), base_pos.1),
+                                    terminal::Clear(terminal::ClearType::UntilNewLine),
+                                    Print::<String>((&cmd[line_pos..]).iter().collect()),
+                                    cursor::MoveTo(base_pos.0 + (line_pos as u16), base_pos.1),
+                                )?;
+                            }
+                        },
+                        KeyCode::Delete => {
+                            if line_pos < cmd.len() {
+                                // Update command
+                                cmd.remove(line_pos);
+
+                                // Display new string
+                                queue!(
+                                    self.stdout, 
+                                    terminal::Clear(terminal::ClearType::UntilNewLine),
+                                    Print::<String>((&cmd[line_pos..]).iter().collect()),
+                                    cursor::MoveTo(base_pos.0 + (line_pos as u16), base_pos.1),
+                                )?;
+                            }
+                        },
                         KeyCode::Enter => (),
                         KeyCode::Esc => break,
                         _ => (),
