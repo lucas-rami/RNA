@@ -1,7 +1,9 @@
-use crate::automaton::{Cells, CellularAutomaton};
+use crate::automaton::{Cells, CellularAutomaton, Operation as AutoOP};
 use crossterm::{
-    cursor, queue,
-    style::{self, style, Attribute, PrintStyledContent, StyledContent},
+    cursor,
+    event::{Event, KeyCode},
+    queue,
+    style::{style, Attribute, Print, PrintStyledContent, StyledContent},
     terminal,
 };
 use std::collections::HashMap;
@@ -50,6 +52,74 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
         ui.cursor_to_command();
         ui.flush();
         ui
+    }
+
+    pub fn cmd_interpreter(
+        &mut self,
+        automaton: &mut CellularAutomaton<C>,
+    ) -> crossterm::Result<()> {
+        // Ensure cursor is on command line
+        self.cursor_to_command();
+        let base_pos = cursor::position()?;
+        let max_len = self.size.0 - base_pos.0;
+
+        // Status for current command
+        let mut cmd = vec![];
+        let mut line_pos: usize = 0;
+
+        loop {
+            match crossterm::event::read()? {
+                Event::Key(key) => {
+                    match key.code {
+                        KeyCode::Char(c) => {
+                            if cmd.len() < max_len as usize {
+                                // Update command
+                                let mut current = c;
+                                for idx in line_pos..cmd.len() {
+                                    let next = cmd[idx];
+                                    cmd[idx] = current;
+                                    current = next;
+                                }
+                                cmd.push(current);
+
+                                // Display new string
+                                queue!(
+                                    self.stdout, 
+                                    cursor::MoveTo(base_pos.0 + (line_pos as u16), base_pos.1),
+                                    terminal::Clear(terminal::ClearType::UntilNewLine),
+                                    Print::<String>((&cmd[line_pos..]).iter().collect()),
+                                    cursor::MoveTo(base_pos.0 + (line_pos as u16) + 1, base_pos.1),
+                                )?;
+
+                                line_pos += 1;
+                            }
+                        }
+                        KeyCode::Left => {
+                            if line_pos > 0 {
+                                queue!(self.stdout, cursor::MoveLeft(1))?;
+                                line_pos -= 1;
+                            }
+                        }
+                        KeyCode::Right => {
+                            if line_pos < cmd.len() {
+                                queue!(self.stdout, cursor::MoveRight(1))?;
+                                line_pos += 1;
+                            }
+                        }
+                        KeyCode::Backspace => (),
+                        KeyCode::Delete => (),
+                        KeyCode::Enter => (),
+                        KeyCode::Esc => break,
+                        _ => (),
+                    };
+                    self.flush();
+                }
+                Event::Resize(width, height) => self.perform(Operation::Resize(width, height)),
+                _ => (),
+            }
+        }
+
+        Ok(())
     }
 
     pub fn perform<'a>(&mut self, op: Operation<'a, C>) -> () {
@@ -177,7 +247,7 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
             for x in 0..render_size.0 {
                 let c = match printer.get(automaton.get_cell(row, self.auto_offset.0 + x)) {
                     Some(repr) => repr.clone(),
-                    None => style::style('?'),
+                    None => style('?'),
                 };
                 queue!(stdout, PrintStyledContent(c)).expect("Failed to display automaton");
             }
@@ -254,12 +324,8 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
     }
 
     fn cursor_to_command(&mut self) -> () {
-        queue!(
-            self.stdout,
-            cursor::MoveTo(0, self.size.1 - 1),
-            style::Print("> ")
-        )
-        .expect("Failed to move cursor to command line.");
+        queue!(self.stdout, cursor::MoveTo(0, self.size.1 - 1), Print("> "))
+            .expect("Failed to move cursor to command line.");
     }
 
     fn flush(&mut self) -> () {
