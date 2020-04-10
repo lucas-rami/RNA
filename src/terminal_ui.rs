@@ -1,4 +1,5 @@
-use crate::automaton::{Cells, CellularAutomaton, Operation as AutoOP};
+use crate::automaton::{Cells, CellularAutomaton, Operation};
+use crate::commands::Command;
 use crossterm::{
     cursor,
     event::{Event, KeyCode},
@@ -9,6 +10,7 @@ use crossterm::{
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::io::{stdout, Stdout, Write};
+use std::{thread, time};
 
 mod module;
 mod styled_text;
@@ -19,34 +21,36 @@ use styled_text::StyledText;
 type Size = (u16, u16);
 
 const HEIGHT_INFO: u16 = 10;
+const RUN: &str = "run";
+const GOTO: &str = "goto";
 
 pub struct TerminalUI<C: Cells + PartialEq + Eq + Hash> {
-    stdout: Stdout,
     size: Size,
     auto_mod: Module,
     info_mod: Module,
     auto_offset: (usize, usize),
-    state: State,
     info: Option<AutomatonInfo<C>>,
+    commands: Vec<Command>,
 }
 
 impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
     pub fn new() -> Self {
         // Clear terminal
-        let mut stdout = stdout();
-        queue!(stdout, terminal::Clear(terminal::ClearType::All))
+        queue!(stdout(), terminal::Clear(terminal::ClearType::All))
             .expect("Failed to clear terminal.");
 
         let size = terminal::size().expect("Failed to read terminal size.");
         let modules = Self::create_modules(size);
-        let mut ui = Self {
-            stdout,
+        let ui = Self {
             size,
             auto_mod: modules.0,
             info_mod: modules.1,
             auto_offset: (0, 0),
-            state: State::NoAutomaton,
             info: None,
+            commands: vec![
+                Command::new(RUN, vec!["nb_gens"]),
+                Command::new(GOTO, vec!["target_gen"]),
+            ],
         };
 
         ui.cursor_to_command();
@@ -54,15 +58,12 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
         ui
     }
 
-    pub fn cmd_interpreter(
-        &mut self,
-        automaton: &mut CellularAutomaton<C>,
-    ) -> crossterm::Result<()> {
+    pub fn cmd_interpreter(&mut self) -> crossterm::Result<()> {
         // Ensure cursor is on command line
         self.cursor_to_command();
         let base_pos = cursor::position()?;
         let max_len = self.size.0 - base_pos.0;
-
+        let mut output = stdout();
         // History
         let mut history: Vec<Vec<char>> = vec![];
 
@@ -83,7 +84,7 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
 
                                 // Display new string
                                 queue!(
-                                    self.stdout,
+                                    output,
                                     cursor::MoveTo(base_pos.0 + (line_pos as u16), base_pos.1),
                                     terminal::Clear(terminal::ClearType::UntilNewLine),
                                     Print::<String>((&cmd[line_pos..]).iter().collect()),
@@ -95,13 +96,13 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
                         }
                         KeyCode::Left => {
                             if 0 < line_pos {
-                                queue!(self.stdout, cursor::MoveLeft(1))?;
+                                queue!(output, cursor::MoveLeft(1))?;
                                 line_pos -= 1;
                             }
                         }
                         KeyCode::Right => {
                             if line_pos < cmd.len() {
-                                queue!(self.stdout, cursor::MoveRight(1))?;
+                                queue!(output, cursor::MoveRight(1))?;
                                 line_pos += 1;
                             }
                         }
@@ -113,7 +114,7 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
 
                                 // Display new string
                                 queue!(
-                                    self.stdout,
+                                    output,
                                     cursor::MoveTo(base_pos.0 + (line_pos as u16), base_pos.1),
                                     terminal::Clear(terminal::ClearType::UntilNewLine),
                                     Print::<String>((&cmd[line_pos..]).iter().collect()),
@@ -128,7 +129,7 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
 
                                 // Display new string
                                 queue!(
-                                    self.stdout,
+                                    output,
                                     terminal::Clear(terminal::ClearType::UntilNewLine),
                                     Print::<String>((&cmd[line_pos..]).iter().collect()),
                                     cursor::MoveTo(base_pos.0 + (line_pos as u16), base_pos.1),
@@ -144,7 +145,7 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
                                 cmd = history[history_idx].clone();
                                 line_pos = cmd.len();
                                 queue!(
-                                    self.stdout,
+                                    output,
                                     cursor::MoveTo(base_pos.0, base_pos.1),
                                     terminal::Clear(terminal::ClearType::UntilNewLine),
                                     Print::<String>(cmd.iter().collect()),
@@ -161,7 +162,7 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
                                 }
                                 line_pos = cmd.len();
                                 queue!(
-                                    self.stdout,
+                                    output,
                                     cursor::MoveTo(base_pos.0, base_pos.1),
                                     terminal::Clear(terminal::ClearType::UntilNewLine),
                                     Print::<String>(cmd.iter().collect()),
@@ -170,18 +171,17 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
                         }
                         KeyCode::Enter => {
                             if 0 < cmd.len() {
-                                // Append command to history
-                                // let cmd_str: String = cmd.iter().collect();
-                                history.push(cmd);
+                                // Parse the command
+                                let cmd_str: String = cmd.iter().collect();
+                                self.parse_cmd(&cmd_str[..]);
 
-                                // Reset status
+                                // Append command to history and reset status
+                                history.push(cmd);
                                 cmd = vec![];
                                 line_pos = 0;
                                 history_idx = history.len();
-
-                                // Reset command line
                                 queue!(
-                                    self.stdout,
+                                    output,
                                     cursor::MoveTo(base_pos.0, base_pos.1),
                                     terminal::Clear(terminal::ClearType::UntilNewLine),
                                 )?;
@@ -192,7 +192,7 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
                     };
                     self.flush();
                 }
-                Event::Resize(width, height) => self.perform(Operation::Resize(width, height)),
+                Event::Resize(width, height) => self.resize((width, height)),
                 _ => (),
             }
         }
@@ -200,98 +200,85 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
         Ok(())
     }
 
-    pub fn perform<'a>(&mut self, op: Operation<'a, C>) -> () {
-        match self.state {
-            State::NoAutomaton => match op {
-                Operation::BindAutomaton(automaton, printer) => {
-                    self.bind_automaton(automaton, printer)
-                }
-                Operation::Resize(width, height) => self.resize((width, height)),
-                _ => panic!("Unsupported operation."),
-            },
-            State::Binded => match op {
-                Operation::BindAutomaton(automaton, printer) => {
-                    self.bind_automaton(automaton, printer)
-                }
-                Operation::SetState(automaton) => self.update_gen(automaton),
-                Operation::NotifyEvolution(target_gen) => self.notify_evolution(target_gen),
-                Operation::Unbind => self.unbind(),
-                Operation::Resize(width, height) => self.resize((width, height)),
-            },
-            State::Running(target_gen) => match op {
-                Operation::SetState(automaton) => {
-                    if automaton.current_gen() >= target_gen {
-                        // Update state and title
-                        self.state = State::Binded;
-
-                        let mut title = self.auto_mod.get_title().clone();
-                        title.pop();
-                        self.auto_mod.set_title(title);
+    fn parse_cmd(&mut self, cmd: &str) -> () {
+        for command in &self.commands {
+            match command.match_cmd(cmd) {
+                Some(mapping) => match command.get_keyword() {
+                    RUN => {
+                        let nb_gens = *mapping.get("nb_gens").unwrap();
+                        match nb_gens.parse::<u64>() {
+                            Ok(nb_gens) => self.run(nb_gens),
+                            Err(_) => (), // Print error on terminal here
+                        }
                     }
-                    self.update_gen(automaton)
-                }
-                Operation::Resize(width, height) => self.resize((width, height)),
-                _ => panic!("Unsupported operation."),
-            },
+                    GOTO => (),
+                    _ => panic!("Unsupported command."),
+                },
+                None => (),
+            }
+            break
         }
+    }
+
+    pub fn bind_automaton(
+        &mut self,
+        automaton: CellularAutomaton<C>,
+        printer: HashMap<C, StyledContent<char>>,
+    ) -> () {
+        if !automaton.is_ready() {
+            panic!("Automaton isn't initialized.")
+        }
+
+        // Change automaton title on UI and update automaton info
+        let name = style(String::from(automaton.get_name()));
+        self.auto_mod.set_title(StyledText::from(vec![name]));
+        self.info = Some(AutomatonInfo::new(automaton, printer));
+
+        // Draw automaton
+        self.draw_automaton();
+    }
+
+    fn run(&mut self, nb_gens: u64) -> () {
+        let automaton = &self.info.as_mut().unwrap().automaton;
+
+        // Update title
+        let mut new_title = self.auto_mod.get_title().clone();
+        new_title.push(
+            style(format!(
+                " - running (to gen. {})",
+                (automaton.current_gen() + nb_gens).to_string()
+            ))
+            .attribute(Attribute::SlowBlink)
+            .attribute(Attribute::Italic),
+        );
+        self.auto_mod.set_title(new_title);
+
+        // Run the automaton
+        for _i in 0..nb_gens {
+            let automaton = &mut self.info.as_mut().unwrap().automaton;
+            automaton.perform(Operation::Step);
+            self.draw_automaton();
+            thread::sleep(time::Duration::from_millis(300));
+        }
+
+        // Reset title to original
+        let mut title = self.auto_mod.get_title().clone();
+        title.pop();
+        self.auto_mod.set_title(title);
 
         self.cursor_to_command();
         self.flush();
     }
 
-    fn bind_automaton(
-        &mut self,
-        automaton: &CellularAutomaton<C>,
-        printer: HashMap<C, StyledContent<char>>,
-    ) -> () {
-        // Update state
-        self.state = State::Binded;
-
-        // Change automaton title and update automaton info
-        let info = AutomatonInfo::new(automaton, printer);
-        self.auto_mod
-            .set_title(StyledText::from(vec![style(info.name.clone())]));
-        self.info = Some(info);
-
-        // Draw automaton
-        self.draw_automaton(automaton);
-    }
-
-    fn update_gen(&mut self, automaton: &CellularAutomaton<C>) -> () {
-        let auto_gen = automaton.current_gen();
-        let mut info = self.info.as_mut().unwrap();
-        if auto_gen < info.current_gen {
-            panic!("Trying to rollback automaton.")
-        }
-        info.current_gen = auto_gen;
-        self.draw_automaton(automaton)
-    }
-
-    fn notify_evolution(&mut self, target_gen: u64) -> () {
-        if target_gen <= self.info.as_mut().unwrap().current_gen {
-            panic!("Evolution cannot rollback automaton.")
-        }
-
-        // Update state and change automaton title
-        self.state = State::Running(target_gen);
-
-        let mut new_title = self.auto_mod.get_title().clone();
-        new_title.push(
-            style(format!(" - running (to gen. {})", target_gen.to_string()))
-                .attribute(Attribute::SlowBlink)
-                .attribute(Attribute::Italic),
-        );
-        self.auto_mod.set_title(new_title);
-    }
-
     fn unbind(&mut self) -> () {
         // Update state and automaton module's title
-        self.state = State::NoAutomaton;
         self.auto_mod
             .set_title(StyledText::from(vec![style(String::from("Automaton"))]));
+        self.info = None;
     }
 
-    fn draw_automaton(&mut self, automaton: &CellularAutomaton<C>) -> () {
+    fn draw_automaton(&self) -> () {
+        let automaton = &self.info.as_ref().unwrap().automaton;
         // Get maximum render size and convert to (usize, usize)
         let max_render_size = self.auto_mod.get_render_size();
         let max_render_size = (max_render_size.0 as usize, max_render_size.1 as usize);
@@ -334,20 +321,20 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
         }
 
         // Update info module
-        let info = self.info.as_ref().unwrap();
+        let auto_size = automaton.size();
         let (x, y) = self.info_mod.get_render_pos();
         let (max_len, _) = self.info_mod.get_render_size();
 
         let generation = StyledText::from(vec![
             style(String::from(" Generation: ")).attribute(Attribute::Italic),
-            style(info.current_gen.to_string()),
+            style(automaton.current_gen().to_string()),
         ]);
         let size = StyledText::from(vec![
             style(String::from(" Total size: ")).attribute(Attribute::Italic),
             style(format!(
                 "({}, {})",
-                info.size.0.to_string(),
-                info.size.1.to_string()
+                auto_size.0.to_string(),
+                auto_size.1.to_string()
             )),
         ]);
         let view = StyledText::from(vec![
@@ -363,13 +350,16 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
 
         // Draw
         self.info_mod.clear_content();
-        generation.draw(&mut self.stdout, cursor::MoveTo(x, y + 1), max_len);
-        size.draw(&mut self.stdout, cursor::MoveTo(x, y + 3), max_len);
-        view.draw(&mut self.stdout, cursor::MoveTo(x, y + 5), max_len);
+        generation.draw(&mut stdout, cursor::MoveTo(x, y + 1), max_len);
+        size.draw(&mut stdout, cursor::MoveTo(x, y + 3), max_len);
+        view.draw(&mut stdout, cursor::MoveTo(x, y + 5), max_len);
+    
+        self.cursor_to_command();
+        self.flush();
     }
 
     fn resize(&mut self, size: Size) -> () {
-        queue!(self.stdout, terminal::Clear(terminal::ClearType::All))
+        queue!(stdout(), terminal::Clear(terminal::ClearType::All))
             .expect("Failed to clear terminal.");
 
         // Recreate modules
@@ -378,6 +368,11 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
         new_modules.1.set_title(self.info_mod.get_title().clone());
         self.auto_mod = new_modules.0;
         self.info_mod = new_modules.1;
+
+        // Redraw automaton if binded
+        if let Some(_) = &self.info {
+            self.draw_automaton();
+        }
 
         // Return cursor to command
         self.cursor_to_command();
@@ -401,47 +396,26 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
         (auto_mod, info_mod)
     }
 
-    fn cursor_to_command(&mut self) -> () {
-        queue!(self.stdout, cursor::MoveTo(0, self.size.1 - 1), Print("> "))
+    fn cursor_to_command(&self) -> () {
+        queue!(stdout(), cursor::MoveTo(0, self.size.1 - 1), Print("> "))
             .expect("Failed to move cursor to command line.");
     }
 
-    fn flush(&mut self) -> () {
-        self.stdout.flush().expect("Failed to flush stdout.");
+    fn flush(&self) -> () {
+        stdout().flush().expect("Failed to flush stdout.");
     }
 }
 
-pub enum Operation<'a, C: Cells> {
-    BindAutomaton(&'a CellularAutomaton<C>, HashMap<C, StyledContent<char>>),
-    SetState(&'a CellularAutomaton<C>),
-    NotifyEvolution(u64),
-    Unbind,
-    Resize(u16, u16),
-}
-
-enum State {
-    NoAutomaton,
-    Binded,
-    Running(u64),
-}
-
 struct AutomatonInfo<C: Cells + PartialEq + Eq + Hash> {
-    name: String,
-    size: (usize, usize),
-    current_gen: u64,
+    automaton: CellularAutomaton<C>,
     printer: HashMap<C, StyledContent<char>>,
 }
 
 impl<C: Cells + PartialEq + Eq + Hash> AutomatonInfo<C> {
     fn new(
-        automaton: &CellularAutomaton<C>,
+        automaton: CellularAutomaton<C>,
         printer: HashMap<C, StyledContent<char>>,
     ) -> AutomatonInfo<C> {
-        AutomatonInfo {
-            name: String::from("dummy"),
-            size: automaton.size(),
-            current_gen: automaton.current_gen(),
-            printer,
-        }
+        AutomatonInfo { automaton, printer }
     }
 }

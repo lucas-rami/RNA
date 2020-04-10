@@ -4,6 +4,7 @@ pub trait Cells: Clone {
 }
 
 pub struct CellularAutomaton<C: Cells> {
+    name: String,
     nb_rows: usize,
     nb_cols: usize,
     state: State,
@@ -15,6 +16,7 @@ pub struct CellularAutomaton<C: Cells> {
 impl<C: Cells> CellularAutomaton<C> {
     pub fn new(nb_rows: usize, nb_cols: usize) -> CellularAutomaton<C> {
         CellularAutomaton {
+            name: String::from("Default name"),
             nb_rows,
             nb_cols,
             state: State::Building,
@@ -111,8 +113,19 @@ impl<C: Cells> CellularAutomaton<C> {
         }
     }
 
+    pub fn is_ready(&self) -> bool {
+        match self.state {
+            State::Ready => true,
+            _ => false,
+        }
+    }
+
     pub fn size(&self) -> (usize, usize) {
         (self.nb_cols, self.nb_rows)
+    }
+
+    pub fn get_name(&self) -> &str {
+        &self.name[..]
     }
 
     pub fn current_gen(&self) -> u64 {
@@ -137,7 +150,7 @@ impl<C: Cells> CellularAutomaton<C> {
     }
 
     fn run(&mut self, nb_gens: u64) -> () {
-        for i in 0..nb_gens {
+        for _ in 0..nb_gens {
             let mut new_automaton = vec![];
             for row in 0..self.nb_rows {
                 for col in 0..self.nb_cols {

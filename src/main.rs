@@ -1,16 +1,13 @@
-use crossterm::{
-    style::{style, Attribute, Color},
-};
+use crossterm::style::{style, Attribute, Color};
 use std::collections::HashMap;
 
-use std::{thread, time};
-
 mod automaton;
+mod commands;
 mod conway;
 mod terminal_ui;
 
 use conway::{conway_canon, GameOfLife};
-use terminal_ui::{Operation as TermOP, TerminalUI};
+use terminal_ui::TerminalUI;
 
 fn main() -> () {
     let mut printer = HashMap::new();
@@ -22,17 +19,6 @@ fn main() -> () {
 
     let mut automaton = conway_canon();
     let mut term_ui = TerminalUI::new();
-    term_ui.perform(TermOP::BindAutomaton(&automaton, printer));
-    term_ui.cmd_interpreter(&mut automaton).unwrap();
-
-    // conway.perform(Operation::Goto(10));
-    // term_ui.perform(TermOP::SetState(&conway));
-    // term_ui.perform(TermOP::NotifyEvolution(50));
-
-    // for _x in 0..50 {
-    //     thread::sleep(time::Duration::from_millis(200));
-    //     conway.perform(Operation::Step);
-    //     term_ui.perform(TermOP::SetState(&conway));
-    // }
-    }
-
+    term_ui.bind_automaton(automaton, printer);
+    term_ui.cmd_interpreter().unwrap();
+}

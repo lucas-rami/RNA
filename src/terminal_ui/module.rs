@@ -1,11 +1,10 @@
 use super::Size;
 use crossterm::{cursor::MoveTo, queue, style::Print};
-use std::io::{stdout, Stdout, Write};
+use std::io::{stdout, Write};
 
 use crate::terminal_ui::styled_text::StyledText;
 
 pub struct Module {
-    stdout: Stdout,
     title: StyledText,
     pos: Size,
     size: Size,
@@ -16,12 +15,7 @@ impl Module {
         if size.0 < 3 || size.1 < 3 {
             panic!("Module size must be at least 3x3.")
         }
-        let mut module = Self {
-            stdout: stdout(),
-            title,
-            pos,
-            size,
-        };
+        let module = Self { title, pos, size };
         module.draw();
         module
     }
@@ -38,7 +32,7 @@ impl Module {
 
         for x in 0..self.size.1 {
             queue!(
-                self.stdout,
+                stdout(),
                 MoveTo(self.pos.0, self.pos.1 + x),
                 Print(empty_line.clone())
             )
@@ -46,7 +40,7 @@ impl Module {
         }
     }
 
-    pub fn clear_content(&mut self) -> () {
+    pub fn clear_content(&self) -> () {
         let content_pos = self.get_render_pos();
         let content_size = self.get_render_size();
 
@@ -56,7 +50,7 @@ impl Module {
 
         for x in 0..content_size.1 {
             queue!(
-                self.stdout,
+                stdout(),
                 MoveTo(content_pos.0, content_pos.1 + x),
                 Print(empty_line.clone())
             )
@@ -64,17 +58,18 @@ impl Module {
         }
     }
 
-    pub fn draw(&mut self) -> () {
+    pub fn draw(&self) -> () {
         self.draw_box();
         self.draw_title();
     }
 
-    pub fn draw_box(&mut self) -> () {
+    pub fn draw_box(&self) -> () {
         let err_msg = "Failed to draw module.";
+        let mut output = stdout();
 
         // Draw top line
         queue!(
-            self.stdout,
+            output,
             MoveTo(self.pos.0, self.pos.1),
             Print("┌─"),
             MoveTo(self.pos.0 + self.size.0 - 2, self.pos.1),
@@ -85,7 +80,7 @@ impl Module {
         // Draw vertical lines
         for row in (self.pos.1 + 1)..(self.pos.1 + self.size.1 - 1) {
             queue!(
-                self.stdout,
+                output,
                 MoveTo(self.pos.0, row),
                 Print('│'),
                 MoveTo(self.pos.0 + self.size.0 - 1, row),
@@ -99,7 +94,7 @@ impl Module {
             .take(self.size.0 as usize - 2)
             .collect::<String>();
         queue!(
-            self.stdout,
+            output,
             MoveTo(self.pos.0, self.pos.1 + self.size.1 - 1),
             Print('└'),
             Print(hline),
@@ -108,14 +103,15 @@ impl Module {
         .expect(err_msg);
     }
 
-    pub fn draw_title(&mut self) -> () {
+    pub fn draw_title(&self) -> () {
+        let mut output = stdout();
         let err_msg = "Failed to draw module's title.";
         let max_len = self.size.0 - 4;
         let base_pos = self.pos.0 + 3;
-        queue!(self.stdout, MoveTo(base_pos - 1, self.pos.1), Print(' '),).expect(err_msg);
+        queue!(output, MoveTo(base_pos - 1, self.pos.1), Print(' '),).expect(err_msg);
         let nb_written = self
             .title
-            .draw(&mut self.stdout, MoveTo(base_pos, self.pos.1), max_len);
+            .draw(&mut output, MoveTo(base_pos, self.pos.1), max_len);
         if nb_written < max_len {
             let hline = std::iter::repeat('─')
                 .take((max_len - nb_written - 1) as usize)
@@ -123,7 +119,7 @@ impl Module {
             let mut top_line = String::from(" ");
             top_line.push_str(&hline[..]);
             queue!(
-                self.stdout,
+                output,
                 MoveTo(base_pos + nb_written, self.pos.1),
                 Print(top_line),
             )
