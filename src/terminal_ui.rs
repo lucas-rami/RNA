@@ -9,7 +9,7 @@ use crossterm::{
 };
 use std::collections::HashMap;
 use std::hash::Hash;
-use std::io::{stdout, Stdout, Write};
+use std::io::{stdout, Write};
 use std::{thread, time};
 
 mod module;
@@ -29,12 +29,13 @@ pub struct TerminalUI<C: Cells + PartialEq + Eq + Hash> {
     auto_mod: Module,
     info_mod: Module,
     auto_offset: (usize, usize),
-    info: Option<AutomatonInfo<C>>,
     commands: Vec<Command>,
+    automaton: CellularAutomaton<C>,
+    printer: HashMap<C, StyledContent<char>>,
 }
 
 impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
-    pub fn new() -> Self {
+    pub fn new(automaton: CellularAutomaton<C>, printer: HashMap<C, StyledContent<char>>) -> Self {
         // Clear terminal
         queue!(stdout(), terminal::Clear(terminal::ClearType::All))
             .expect("Failed to clear terminal.");
@@ -46,15 +47,15 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
             auto_mod: modules.0,
             info_mod: modules.1,
             auto_offset: (0, 0),
-            info: None,
             commands: vec![
                 Command::new(RUN, vec!["nb_gens"]),
                 Command::new(GOTO, vec!["target_gen"]),
             ],
+            automaton,
+            printer,
         };
 
-        ui.cursor_to_command();
-        ui.flush();
+        ui.draw_automaton();
         ui
     }
 
@@ -171,10 +172,6 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
                         }
                         KeyCode::Enter => {
                             if 0 < cmd.len() {
-                                // Parse the command
-                                let cmd_str: String = cmd.iter().collect();
-                                self.parse_cmd(&cmd_str[..]);
-
                                 // Append command to history and reset status
                                 history.push(cmd);
                                 cmd = vec![];
@@ -185,6 +182,9 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
                                     cursor::MoveTo(base_pos.0, base_pos.1),
                                     terminal::Clear(terminal::ClearType::UntilNewLine),
                                 )?;
+                                // Parse the command
+                                let cmd_str: String = history[history.len() - 1].iter().collect();
+                                self.parse_cmd(&cmd_str[..]);
                             }
                         }
                         KeyCode::Esc => break,
@@ -213,18 +213,14 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
                             }
                         }
                         GOTO => {
-                            if let Some(info) = &self.info {
-                                let cur_gen = info.automaton.current_gen();
-                                let target_gen = *mapping.get("target_gen").unwrap();
-                                match target_gen.parse::<u64>() {
-                                    Ok(target_gen) if target_gen > cur_gen => {
-                                        self.run(target_gen - cur_gen)
-                                    }
-                                    Ok(_) => (),  // Print error
-                                    Err(_) => (), // Print error on terminal here
+                            let cur_gen = self.automaton.current_gen();
+                            let target_gen = *mapping.get("target_gen").unwrap();
+                            match target_gen.parse::<u64>() {
+                                Ok(target_gen) if target_gen > cur_gen => {
+                                    self.run(target_gen - cur_gen)
                                 }
-                            } else {
-                                // Print error
+                                Ok(_) => (),  // Print error
+                                Err(_) => (), // Print error on terminal here
                             }
                         }
                         _ => panic!("Unsupported command."),
@@ -236,33 +232,13 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
         }
     }
 
-    pub fn bind_automaton(
-        &mut self,
-        automaton: CellularAutomaton<C>,
-        printer: HashMap<C, StyledContent<char>>,
-    ) -> () {
-        if !automaton.is_ready() {
-            panic!("Automaton isn't initialized.")
-        }
-
-        // Change automaton title on UI and update automaton info
-        let name = style(String::from(automaton.get_name()));
-        self.auto_mod.set_title(StyledText::from(vec![name]));
-        self.info = Some(AutomatonInfo::new(automaton, printer));
-
-        // Draw automaton
-        self.draw_automaton();
-    }
-
     fn run(&mut self, nb_gens: u64) -> () {
-        let automaton = &self.info.as_mut().unwrap().automaton;
-
         // Update title
         let mut new_title = self.auto_mod.get_title().clone();
         new_title.push(
             style(format!(
                 " (running to generation {})",
-                (automaton.current_gen() + nb_gens).to_string()
+                (self.automaton.current_gen() + nb_gens).to_string()
             ))
             .attribute(Attribute::SlowBlink)
             .attribute(Attribute::Italic),
@@ -271,8 +247,7 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
 
         // Run the automaton
         for _i in 0..nb_gens {
-            let automaton = &mut self.info.as_mut().unwrap().automaton;
-            automaton.perform(Operation::Step);
+            self.automaton.perform(Operation::Step);
             self.draw_automaton();
             thread::sleep(time::Duration::from_millis(300));
         }
@@ -287,13 +262,12 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
     }
 
     fn draw_automaton(&self) -> () {
-        let automaton = &self.info.as_ref().unwrap().automaton;
         // Get maximum render size and convert to (usize, usize)
         let max_render_size = self.auto_mod.get_render_size();
         let max_render_size = (max_render_size.0 as usize, max_render_size.1 as usize);
 
         // Determine real render size
-        let auto_size = automaton.size();
+        let auto_size = self.automaton.size();
         let mut render_size = (
             auto_size.0 - self.auto_offset.0,
             auto_size.1 - self.auto_offset.1,
@@ -308,7 +282,6 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
         // Clear module content and redraw over it
         self.auto_mod.clear_content();
 
-        let printer = &self.info.as_ref().unwrap().printer;
         let render_pos = self.auto_mod.get_render_pos();
         let mut row = self.auto_offset.1;
         let mut stdout = stdout();
@@ -319,7 +292,10 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
             )
             .expect("Failed to move cursor.");
             for x in 0..render_size.0 {
-                let c = match printer.get(automaton.get_cell(row, self.auto_offset.0 + x)) {
+                let c = match self
+                    .printer
+                    .get(self.automaton.get_cell(row, self.auto_offset.0 + x))
+                {
                     Some(repr) => repr.clone(),
                     None => style('?'),
                 };
@@ -330,13 +306,13 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
         }
 
         // Update info module
-        let auto_size = automaton.size();
+        let auto_size = self.automaton.size();
         let (x, y) = self.info_mod.get_render_pos();
         let (max_len, _) = self.info_mod.get_render_size();
 
         let generation = StyledText::from(vec![
             style(String::from(" Generation: ")).attribute(Attribute::Italic),
-            style(automaton.current_gen().to_string()),
+            style(self.automaton.current_gen().to_string()),
         ]);
         let size = StyledText::from(vec![
             style(String::from(" Total size: ")).attribute(Attribute::Italic),
@@ -377,12 +353,8 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
         self.auto_mod = new_modules.0;
         self.info_mod = new_modules.1;
 
-        // Redraw automaton if binded
-        if let Some(_) = &self.info {
-            self.draw_automaton();
-        }
-
         // Return cursor to command
+        self.draw_automaton();
         self.cursor_to_command();
         self.flush();
     }
@@ -411,19 +383,5 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
 
     fn flush(&self) -> () {
         stdout().flush().expect("Failed to flush stdout.");
-    }
-}
-
-struct AutomatonInfo<C: Cells + PartialEq + Eq + Hash> {
-    automaton: CellularAutomaton<C>,
-    printer: HashMap<C, StyledContent<char>>,
-}
-
-impl<C: Cells + PartialEq + Eq + Hash> AutomatonInfo<C> {
-    fn new(
-        automaton: CellularAutomaton<C>,
-        printer: HashMap<C, StyledContent<char>>,
-    ) -> AutomatonInfo<C> {
-        AutomatonInfo { automaton, printer }
     }
 }

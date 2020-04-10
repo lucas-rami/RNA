@@ -6,7 +6,7 @@ mod commands;
 mod conway;
 mod terminal_ui;
 
-use conway::{conway_canon, GameOfLife};
+use conway::{GameOfLife};
 use terminal_ui::TerminalUI;
 
 fn main() -> () {
@@ -17,8 +17,6 @@ fn main() -> () {
         style('#').with(Color::Green).attribute(Attribute::Bold),
     );
 
-    let automaton = conway_canon();
-    let mut term_ui = TerminalUI::new();
-    term_ui.bind_automaton(automaton, printer);
+    let mut term_ui = TerminalUI::new(conway::conway_canon(), printer);
     term_ui.cmd_interpreter().unwrap();
 }
