@@ -23,12 +23,13 @@ type Size = (u16, u16);
 const HEIGHT_INFO: u16 = 10;
 const RUN: &str = "run";
 const GOTO: &str = "goto";
+const VIEW: &str = "view";
 
 pub struct TerminalUI<C: Cells + PartialEq + Eq + Hash> {
     size: Size,
     auto_mod: Module,
     info_mod: Module,
-    auto_offset: (usize, usize),
+    view: (usize, usize),
     commands: Vec<Command>,
     automaton: CellularAutomaton<C>,
     printer: HashMap<C, StyledContent<char>>,
@@ -36,25 +37,33 @@ pub struct TerminalUI<C: Cells + PartialEq + Eq + Hash> {
 
 impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
     pub fn new(automaton: CellularAutomaton<C>, printer: HashMap<C, StyledContent<char>>) -> Self {
+        if !automaton.is_ready() {
+            panic!("Automatin isn't initialized.");
+        }
+
         // Clear terminal
         queue!(stdout(), terminal::Clear(terminal::ClearType::All))
             .expect("Failed to clear terminal.");
 
         let size = terminal::size().expect("Failed to read terminal size.");
         let modules = Self::create_modules(size);
-        let ui = Self {
+        let mut ui = Self {
             size,
             auto_mod: modules.0,
             info_mod: modules.1,
-            auto_offset: (0, 0),
+            view: (0, 0),
             commands: vec![
                 Command::new(RUN, vec!["nb_gens"]),
                 Command::new(GOTO, vec!["target_gen"]),
+                Command::new(VIEW, vec!["x", "y"]),
             ],
             automaton,
             printer,
         };
 
+        // Set automaton title and draw initial state
+        let title = StyledText::from(vec![style(String::from(ui.automaton.get_name()))]);
+        ui.auto_mod.set_title(title);
         ui.draw_automaton();
         ui
     }
@@ -219,8 +228,21 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
                                 Ok(target_gen) if target_gen > cur_gen => {
                                     self.run(target_gen - cur_gen)
                                 }
-                                Ok(_) => (),  // Print error
+                                Ok(_) => (),  // Print error on terminal here
                                 Err(_) => (), // Print error on terminal here
+                            }
+                        }
+                        VIEW => {
+                            let x_arg = *mapping.get("x").unwrap();
+                            let y_arg = *mapping.get("y").unwrap();
+                            if let Ok(x) = x_arg.parse::<usize>() {
+                                if let Ok(y) = y_arg.parse::<usize>() {
+                                    self.move_view(x, y);
+                                } else {
+                                    // Print error on terminal here
+                                }
+                            } else {
+                                // Print error on terminal here
                             }
                         }
                         _ => panic!("Unsupported command."),
@@ -261,6 +283,15 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
         self.flush();
     }
 
+    fn move_view(&mut self, x: usize, y: usize) -> ()  {
+        let (auto_x, auto_y) = self.automaton.size();
+        if x < auto_x && y < auto_y {
+            self.view.0 = x;
+            self.view.1 = y;
+            self.draw_automaton();  
+        }
+    }
+
     fn draw_automaton(&self) -> () {
         // Get maximum render size and convert to (usize, usize)
         let max_render_size = self.auto_mod.get_render_size();
@@ -269,8 +300,8 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
         // Determine real render size
         let auto_size = self.automaton.size();
         let mut render_size = (
-            auto_size.0 - self.auto_offset.0,
-            auto_size.1 - self.auto_offset.1,
+            auto_size.0 - self.view.0,
+            auto_size.1 - self.view.1,
         );
         if render_size.0 > max_render_size.0 {
             render_size.0 = max_render_size.0;
@@ -283,7 +314,7 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
         self.auto_mod.clear_content();
 
         let render_pos = self.auto_mod.get_render_pos();
-        let mut row = self.auto_offset.1;
+        let mut row = self.view.1;
         let mut stdout = stdout();
         for y in 0..render_size.1 {
             queue!(
@@ -294,7 +325,7 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
             for x in 0..render_size.0 {
                 let c = match self
                     .printer
-                    .get(self.automaton.get_cell(row, self.auto_offset.0 + x))
+                    .get(self.automaton.get_cell(row, self.view.0 + x))
                 {
                     Some(repr) => repr.clone(),
                     None => style('?'),
@@ -326,10 +357,10 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
             style(String::from(" Viewing   : ")).attribute(Attribute::Italic),
             style(format!(
                 "({}, {}) -> ({}, {})",
-                self.auto_offset.0.to_string(),
-                self.auto_offset.1.to_string(),
-                (self.auto_offset.0 + render_size.0).to_string(),
-                (self.auto_offset.1 + render_size.1).to_string(),
+                self.view.0.to_string(),
+                self.view.1.to_string(),
+                (self.view.0 + render_size.0).to_string(),
+                (self.view.1 + render_size.1).to_string(),
             )),
         ]);
 

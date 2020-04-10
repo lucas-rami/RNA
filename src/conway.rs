@@ -54,7 +54,7 @@ impl Cells for GameOfLife {
 }
 
 pub fn conway_canon() -> CellularAutomaton<GameOfLife> {
-    let mut conway = CellularAutomaton::new(100, 200); // (38, 11)
+    let mut conway = CellularAutomaton::new("Conway Canon", 100, 200); // (38, 11)
     conway = cascade!(
         conway;
         ..perform(Operation::SetCell(1, 5, GameOfLife::Alive));

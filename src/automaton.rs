@@ -14,9 +14,9 @@ pub struct CellularAutomaton<C: Cells> {
 }
 
 impl<C: Cells> CellularAutomaton<C> {
-    pub fn new(nb_rows: usize, nb_cols: usize) -> CellularAutomaton<C> {
+    pub fn new(name: &str, nb_rows: usize, nb_cols: usize) -> CellularAutomaton<C> {
         CellularAutomaton {
-            name: String::from("Default name"),
+            name: String::from(name),
             nb_rows,
             nb_cols,
             state: State::Building,
