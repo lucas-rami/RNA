@@ -203,20 +203,36 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
     fn parse_cmd(&mut self, cmd: &str) -> () {
         for command in &self.commands {
             match command.match_cmd(cmd) {
-                Some(mapping) => match command.get_keyword() {
-                    RUN => {
-                        let nb_gens = *mapping.get("nb_gens").unwrap();
-                        match nb_gens.parse::<u64>() {
-                            Ok(nb_gens) => self.run(nb_gens),
-                            Err(_) => (), // Print error on terminal here
+                Some(mapping) => {
+                    match command.get_keyword() {
+                        RUN => {
+                            let nb_gens = *mapping.get("nb_gens").unwrap();
+                            match nb_gens.parse::<u64>() {
+                                Ok(nb_gens) => self.run(nb_gens),
+                                Err(_) => (), // Print error on terminal here
+                            }
                         }
+                        GOTO => {
+                            if let Some(info) = &self.info {
+                                let cur_gen = info.automaton.current_gen();
+                                let target_gen = *mapping.get("target_gen").unwrap();
+                                match target_gen.parse::<u64>() {
+                                    Ok(target_gen) if target_gen > cur_gen => {
+                                        self.run(target_gen - cur_gen)
+                                    }
+                                    Ok(_) => (),  // Print error
+                                    Err(_) => (), // Print error on terminal here
+                                }
+                            } else {
+                                // Print error
+                            }
+                        }
+                        _ => panic!("Unsupported command."),
                     }
-                    GOTO => (),
-                    _ => panic!("Unsupported command."),
-                },
+                    break;
+                }
                 None => (),
             }
-            break
         }
     }
 
@@ -245,7 +261,7 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
         let mut new_title = self.auto_mod.get_title().clone();
         new_title.push(
             style(format!(
-                " - running (to gen. {})",
+                " (running to generation {})",
                 (automaton.current_gen() + nb_gens).to_string()
             ))
             .attribute(Attribute::SlowBlink)
@@ -268,13 +284,6 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
 
         self.cursor_to_command();
         self.flush();
-    }
-
-    fn unbind(&mut self) -> () {
-        // Update state and automaton module's title
-        self.auto_mod
-            .set_title(StyledText::from(vec![style(String::from("Automaton"))]));
-        self.info = None;
     }
 
     fn draw_automaton(&self) -> () {
@@ -353,7 +362,6 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
         generation.draw(&mut stdout, cursor::MoveTo(x, y + 1), max_len);
         size.draw(&mut stdout, cursor::MoveTo(x, y + 3), max_len);
         view.draw(&mut stdout, cursor::MoveTo(x, y + 5), max_len);
-    
         self.cursor_to_command();
         self.flush();
     }

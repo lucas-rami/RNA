@@ -1,7 +1,4 @@
 use std::collections::HashMap;
-use std::error;
-use std::fmt;
-use std::str::FromStr;
 
 pub struct Command {
     keyword: String,
@@ -21,8 +18,8 @@ impl Command {
         {
             if tokens.len() == (1 + self.args.len()) && tokens[0] == self.keyword {
                 let mut map = HashMap::new();
-                for token_arg in tokens[1..].iter().zip(self.args.iter()) {
-                    let (token, argname) = token_arg;
+                for token_arg in self.args.iter().zip(tokens[1..].iter()) {
+                    let (argname, token) = token_arg;
                     map.insert(&argname[..], *token);
                 }
                 Some(map)

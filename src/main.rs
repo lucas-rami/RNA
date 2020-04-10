@@ -11,13 +11,13 @@ use terminal_ui::TerminalUI;
 
 fn main() -> () {
     let mut printer = HashMap::new();
-    printer.insert(GameOfLife::Dead, style('·'));
+    printer.insert(GameOfLife::Dead, style('·').with(Color::Grey));
     printer.insert(
         GameOfLife::Alive,
-        style('#').with(Color::Blue).attribute(Attribute::Bold),
+        style('#').with(Color::Green).attribute(Attribute::Bold),
     );
 
-    let mut automaton = conway_canon();
+    let automaton = conway_canon();
     let mut term_ui = TerminalUI::new();
     term_ui.bind_automaton(automaton, printer);
     term_ui.cmd_interpreter().unwrap();
