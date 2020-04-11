@@ -9,3 +9,7 @@ edition = "2018"
 [dependencies]
 crossterm = "0.16"
 cascade = "0.1.4"
+vulkano = "0.18.0"
+vulkano-shaders = "0.18.0"
+winit = "0.22"
+vulkano-win = "0.18.0"
