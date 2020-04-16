@@ -1,5 +1,9 @@
-use crate::automaton::{Cells, CellularAutomaton, Operation};
 use crate::commands::Command;
+use crate::simulator::{
+    automaton::CellularAutomaton,
+    grid::Position,
+    Simulator,
+};
 use crossterm::{
     cursor,
     event::{Event, KeyCode},
@@ -25,22 +29,18 @@ const RUN: &str = "run";
 const GOTO: &str = "goto";
 const VIEW: &str = "view";
 
-pub struct TerminalUI<C: Cells + PartialEq + Eq + Hash> {
+pub struct TerminalUI<C: CellularAutomaton + PartialEq + Eq + Hash> {
     size: Size,
     auto_mod: Module,
     info_mod: Module,
     view: (usize, usize),
     commands: Vec<Command>,
-    automaton: CellularAutomaton<C>,
+    simulator: Simulator<C>,
     printer: HashMap<C, StyledContent<char>>,
 }
 
-impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
-    pub fn new(automaton: CellularAutomaton<C>, printer: HashMap<C, StyledContent<char>>) -> Self {
-        if !automaton.is_ready() {
-            panic!("Automatin isn't initialized.");
-        }
-
+impl<C: CellularAutomaton + PartialEq + Eq + Hash> TerminalUI<C> {
+    pub fn new(simulator: Simulator<C>, printer: HashMap<C, StyledContent<char>>) -> Self {
         // Clear terminal
         queue!(stdout(), terminal::Clear(terminal::ClearType::All))
             .expect("Failed to clear terminal.");
@@ -57,12 +57,12 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
                 Command::new(GOTO, vec!["target_gen"]),
                 Command::new(VIEW, vec!["x", "y"]),
             ],
-            automaton,
+            simulator,
             printer,
         };
 
-        // Set automaton title and draw initial state
-        let title = StyledText::from(vec![style(String::from(ui.automaton.get_name()))]);
+        // Set simulator title and draw initial state
+        let title = StyledText::from(vec![style(String::from(ui.simulator.get_name()))]);
         ui.auto_mod.set_title(title);
         ui.draw_automaton();
         ui
@@ -222,7 +222,7 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
                             }
                         }
                         GOTO => {
-                            let cur_gen = self.automaton.current_gen();
+                            let cur_gen = self.simulator.current_gen();
                             let target_gen = *mapping.get("target_gen").unwrap();
                             match target_gen.parse::<u64>() {
                                 Ok(target_gen) if target_gen > cur_gen => {
@@ -260,18 +260,18 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
         new_title.push(
             style(format!(
                 " (running to generation {})",
-                (self.automaton.current_gen() + nb_gens).to_string()
+                (self.simulator.current_gen() + nb_gens).to_string()
             ))
             .attribute(Attribute::SlowBlink)
             .attribute(Attribute::Italic),
         );
         self.auto_mod.set_title(new_title);
 
-        // Run the automaton
+        // Run the simulator
         for _i in 0..nb_gens {
-            self.automaton.perform(Operation::Step);
+            self.simulator.run(1);
             self.draw_automaton();
-            thread::sleep(time::Duration::from_millis(300));
+            thread::sleep(time::Duration::from_millis(100));
         }
 
         // Reset title to original
@@ -283,12 +283,12 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
         self.flush();
     }
 
-    fn move_view(&mut self, x: usize, y: usize) -> ()  {
-        let (auto_x, auto_y) = self.automaton.size();
-        if x < auto_x && y < auto_y {
+    fn move_view(&mut self, x: usize, y: usize) -> () {
+        let dim = self.simulator.size();
+        if x < dim.nb_cols && y < dim.nb_rows {
             self.view.0 = x;
             self.view.1 = y;
-            self.draw_automaton();  
+            self.draw_automaton();
         }
     }
 
@@ -298,11 +298,8 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
         let max_render_size = (max_render_size.0 as usize, max_render_size.1 as usize);
 
         // Determine real render size
-        let auto_size = self.automaton.size();
-        let mut render_size = (
-            auto_size.0 - self.view.0,
-            auto_size.1 - self.view.1,
-        );
+        let dim = self.simulator.size();
+        let mut render_size = (dim.nb_cols - self.view.0, dim.nb_rows - self.view.1);
         if render_size.0 > max_render_size.0 {
             render_size.0 = max_render_size.0;
         }
@@ -325,32 +322,32 @@ impl<C: Cells + PartialEq + Eq + Hash> TerminalUI<C> {
             for x in 0..render_size.0 {
                 let c = match self
                     .printer
-                    .get(self.automaton.get_cell(row, self.view.0 + x))
+                    .get(self.simulator.get_cell(&Position::new(self.view.0 + x, row)))
                 {
                     Some(repr) => repr.clone(),
                     None => style('?'),
                 };
-                queue!(stdout, PrintStyledContent(c)).expect("Failed to display automaton");
+                queue!(stdout, PrintStyledContent(c)).expect("Failed to display simulator");
             }
             // Next row
             row += 1
         }
 
         // Update info module
-        let auto_size = self.automaton.size();
+        let auto_size = self.simulator.size();
         let (x, y) = self.info_mod.get_render_pos();
         let (max_len, _) = self.info_mod.get_render_size();
 
         let generation = StyledText::from(vec![
             style(String::from(" Generation: ")).attribute(Attribute::Italic),
-            style(self.automaton.current_gen().to_string()),
+            style(self.simulator.current_gen().to_string()),
         ]);
         let size = StyledText::from(vec![
             style(String::from(" Total size: ")).attribute(Attribute::Italic),
             style(format!(
                 "({}, {})",
-                auto_size.0.to_string(),
-                auto_size.1.to_string()
+                auto_size.nb_rows.to_string(),
+                auto_size.nb_cols.to_string()
             )),
         ]);
         let view = StyledText::from(vec![
