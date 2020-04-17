@@ -1,6 +1,6 @@
 use crate::commands::Command;
 use crate::simulator::{
-    automaton::CellularAutomaton,
+    automaton::{CellularAutomaton, TermDrawable},
     grid::Position,
     Simulator,
 };
@@ -8,11 +8,9 @@ use crossterm::{
     cursor,
     event::{Event, KeyCode},
     queue,
-    style::{style, Attribute, Print, PrintStyledContent, StyledContent},
+    style::{style, Attribute, Print, PrintStyledContent},
     terminal,
 };
-use std::collections::HashMap;
-use std::hash::Hash;
 use std::io::{stdout, Write};
 use std::{thread, time};
 
@@ -29,18 +27,17 @@ const RUN: &str = "run";
 const GOTO: &str = "goto";
 const VIEW: &str = "view";
 
-pub struct TerminalUI<C: CellularAutomaton + PartialEq + Eq + Hash> {
+pub struct TerminalUI<C: CellularAutomaton + TermDrawable> {
     size: Size,
     auto_mod: Module,
     info_mod: Module,
     view: (usize, usize),
     commands: Vec<Command>,
     simulator: Simulator<C>,
-    printer: HashMap<C, StyledContent<char>>,
 }
 
-impl<C: CellularAutomaton + PartialEq + Eq + Hash> TerminalUI<C> {
-    pub fn new(simulator: Simulator<C>, printer: HashMap<C, StyledContent<char>>) -> Self {
+impl<C: CellularAutomaton + TermDrawable> TerminalUI<C> {
+    pub fn new(simulator: Simulator<C>) -> Self {
         // Clear terminal
         queue!(stdout(), terminal::Clear(terminal::ClearType::All))
             .expect("Failed to clear terminal.");
@@ -58,7 +55,6 @@ impl<C: CellularAutomaton + PartialEq + Eq + Hash> TerminalUI<C> {
                 Command::new(VIEW, vec!["x", "y"]),
             ],
             simulator,
-            printer,
         };
 
         // Set simulator title and draw initial state
@@ -320,13 +316,7 @@ impl<C: CellularAutomaton + PartialEq + Eq + Hash> TerminalUI<C> {
             )
             .expect("Failed to move cursor.");
             for x in 0..render_size.0 {
-                let c = match self
-                    .printer
-                    .get(self.simulator.get_cell(&Position::new(self.view.0 + x, row)))
-                {
-                    Some(repr) => repr.clone(),
-                    None => style('?'),
-                };
+                let c = self.simulator.get_cell(&Position::new(self.view.0 + x, row)).style().clone();
                 queue!(stdout, PrintStyledContent(c)).expect("Failed to display simulator");
             }
             // Next row

@@ -1,6 +1,11 @@
 use crate::simulator::grid::{Grid, GridView, Position, RelCoords};
-use crate::simulator::{automaton::CellularAutomaton, grid::Dimensions, Simulator};
+use crate::simulator::{
+    automaton::{CellularAutomaton, TermDrawable},
+    grid::Dimensions,
+    Simulator,
+};
 use cascade::cascade;
+use crossterm::style::{style, Attribute, Color, StyledContent};
 
 #[derive(Clone, Eq, PartialEq, std::hash::Hash)]
 pub enum GameOfLife {
@@ -9,6 +14,9 @@ pub enum GameOfLife {
 }
 
 impl CellularAutomaton for GameOfLife {
+    fn all_states() -> Vec<Self> {
+        vec![GameOfLife::Dead, GameOfLife::Alive]
+    }
     fn update_cpu<'a>(&self, grid: &GridView<'a, Self>) -> Self {
         // Count the number of alive cells around us
         let neighbors = vec![
@@ -53,6 +61,15 @@ impl CellularAutomaton for GameOfLife {
 
     fn name(&self) -> String {
         String::from("Conway's Game of Life")
+    }
+}
+
+impl TermDrawable for GameOfLife {
+    fn style(&self) -> StyledContent<char> {
+        match self {
+            Self::Dead => style('·').with(Color::Grey),
+            Self::Alive => style('#').with(Color::Green).attribute(Attribute::Bold),
+        }
     }
 }
 

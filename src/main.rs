@@ -1,12 +1,7 @@
-use crossterm::style::{style, Attribute, Color};
-use std::collections::HashMap;
-
 mod simulator;
 mod commands;
 mod game_of_life;
 mod terminal_ui;
-
-use game_of_life::GameOfLife;
 use terminal_ui::TerminalUI;
 
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
@@ -22,14 +17,7 @@ use vulkano::sync::GpuFuture;
 use std::sync::Arc;
 
 fn main() -> () {
-    let mut printer = HashMap::new();
-    printer.insert(GameOfLife::Dead, style('·').with(Color::Grey));
-    printer.insert(
-        GameOfLife::Alive,
-        style('#').with(Color::Green).attribute(Attribute::Bold),
-    );
-
-    let mut term_ui = TerminalUI::new(game_of_life::conway_canon(), printer);
+    let mut term_ui = TerminalUI::new(game_of_life::conway_canon());
     term_ui.cmd_interpreter().unwrap();
     // compute_shader();
 }
