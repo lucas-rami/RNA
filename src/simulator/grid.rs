@@ -1,18 +1,18 @@
 use super::automaton::CellularAutomaton;
 
 #[derive(Clone)]
-pub struct Grid<T: CellularAutomaton> {
+pub struct Grid<T: Clone> {
     dim: Dimensions,
     default: T,
     grid: Vec<T>,
 }
 
-impl<T: CellularAutomaton> Grid<T> {
-    pub fn new(dim: Dimensions) -> Self {
-        let grid = vec![T::default(); dim.nb_rows * dim.nb_cols]; 
+impl<T: Clone> Grid<T> {
+    pub fn new(dim: Dimensions, default: &T) -> Self {
+        let grid = vec![default.clone(); dim.nb_rows * dim.nb_cols]; 
         Self {
             dim,
-            default: T::default(),
+            default: default.clone(),
             grid,
         }
     }
@@ -52,14 +52,18 @@ impl<T: CellularAutomaton> Grid<T> {
     }
 }
 
-pub struct GridView<'a, T: Clone> {
+pub struct GridView<'a, T> {
     pos: Position,
     dim: &'a Dimensions,
     default: &'a T,
     view: &'a Vec<T>,
 }
 
-impl<'a, T: Clone> GridView<'a, T> {
+impl<'a, T> GridView<'a, T> {
+    pub fn state(&self) -> &'a T {
+        &self.view[self.pos.row * self.dim.nb_cols + self.pos.col]
+    }
+    
     pub fn get(&self, coords: RelCoords) -> &'a T {
         let row = {
             if coords.row < 0 && (coords.row.abs() as usize) <= self.pos.row {

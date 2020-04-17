@@ -1,23 +1,45 @@
 use crate::simulator::grid::{Grid, GridView, Position, RelCoords};
 use crate::simulator::{
-    automaton::{CellularAutomaton, TermDrawable},
+    automaton::{CellularAutomaton, TermDrawableAutomaton},
     grid::Dimensions,
     Simulator,
 };
 use cascade::cascade;
 use crossterm::style::{style, Attribute, Color, StyledContent};
+use std::collections::HashMap;
 
-#[derive(Clone, Eq, PartialEq, std::hash::Hash)]
-pub enum GameOfLife {
+#[derive(Copy, Clone, Eq, PartialEq, std::hash::Hash)]
+pub enum GOLStates {
     Dead,
     Alive,
 }
 
-impl CellularAutomaton for GameOfLife {
-    fn all_states() -> Vec<Self> {
-        vec![GameOfLife::Dead, GameOfLife::Alive]
+pub struct GameOfLife {
+    name: &'static str,
+    style_map: HashMap<GOLStates, StyledContent<char>>,
+}
+
+impl GameOfLife {
+    pub fn new() -> Self {
+        let mut style_map = HashMap::new();
+        style_map.insert(GOLStates::Dead, style('·').with(Color::Grey));
+        style_map.insert(
+            GOLStates::Alive,
+            style('#').with(Color::Green).attribute(Attribute::Bold),
+        );
+        Self {
+            name: "Conway's Game of Life",
+            style_map,
+        }
     }
-    fn update_cpu<'a>(&self, grid: &GridView<'a, Self>) -> Self {
+}
+
+impl CellularAutomaton<GOLStates> for GameOfLife {
+    fn all_states(&self) -> Vec<GOLStates> {
+        vec![GOLStates::Dead, GOLStates::Alive]
+    }
+
+    fn update_cpu<'a>(&self, grid: &GridView<'a, GOLStates>) -> GOLStates {
         // Count the number of alive cells around us
         let neighbors = vec![
             RelCoords::new(-1, -1),
@@ -30,7 +52,7 @@ impl CellularAutomaton for GameOfLife {
             RelCoords::new(0, -1),
         ];
         let nb_alive_neighbors = grid.get_multiple(neighbors).iter().fold(0, |cnt, cell| {
-            if let Self::Alive = cell {
+            if let GOLStates::Alive = cell {
                 cnt + 1
             } else {
                 cnt
@@ -38,81 +60,79 @@ impl CellularAutomaton for GameOfLife {
         });
 
         // Apply the evolution rule
-        match self {
-            Self::Dead => {
+        match grid.state() {
+            GOLStates::Dead => {
                 if nb_alive_neighbors == 3 {
-                    Self::Alive
+                    GOLStates::Alive
                 } else {
-                    Self::Dead
+                    GOLStates::Dead
                 }
             }
-            Self::Alive => {
+            GOLStates::Alive => {
                 if nb_alive_neighbors == 2 || nb_alive_neighbors == 3 {
-                    Self::Alive
+                    GOLStates::Alive
                 } else {
-                    Self::Dead
+                    GOLStates::Dead
                 }
             }
         }
     }
-    fn default() -> Self {
-        Self::Dead
+    fn default(&self) -> GOLStates {
+        GOLStates::Dead
     }
 
-    fn name(&self) -> String {
-        String::from("Conway's Game of Life")
-    }
-}
-
-impl TermDrawable for GameOfLife {
-    fn style(&self) -> StyledContent<char> {
-        match self {
-            Self::Dead => style('·').with(Color::Grey),
-            Self::Alive => style('#').with(Color::Green).attribute(Attribute::Bold),
-        }
+    fn name(&self) -> &str {
+        self.name
     }
 }
 
-pub fn conway_canon() -> Simulator<GameOfLife> {
-    let mut grid = Grid::new(Dimensions::new(100, 200));
+impl TermDrawableAutomaton<GOLStates> for GameOfLife {
+    fn style(&self, state: &GOLStates) -> &StyledContent<char> {
+        &self.style_map.get(state).unwrap()
+    }
+}
+
+pub fn conway_canon() -> Simulator<GOLStates, GameOfLife> {
+    let gol = GameOfLife::new();
+    let mut grid = Grid::new(Dimensions::new(100, 200), &gol.default());
     grid = cascade!(
         grid;
-        ..set(&Position::new(1, 5), GameOfLife::Alive);
-        ..set(&Position::new(1, 6), GameOfLife::Alive);
-        ..set(&Position::new(2, 5), GameOfLife::Alive);
-        ..set(&Position::new(2, 6), GameOfLife::Alive);
-        ..set(&Position::new(11, 5), GameOfLife::Alive);
-        ..set(&Position::new(11, 6), GameOfLife::Alive);
-        ..set(&Position::new(11, 7), GameOfLife::Alive);
-        ..set(&Position::new(12, 4), GameOfLife::Alive);
-        ..set(&Position::new(12, 8), GameOfLife::Alive);
-        ..set(&Position::new(13, 3), GameOfLife::Alive);
-        ..set(&Position::new(13, 9), GameOfLife::Alive);
-        ..set(&Position::new(14, 3), GameOfLife::Alive);
-        ..set(&Position::new(14, 9), GameOfLife::Alive);
-        ..set(&Position::new(15, 6), GameOfLife::Alive);
-        ..set(&Position::new(16, 4), GameOfLife::Alive);
-        ..set(&Position::new(16, 8), GameOfLife::Alive);
-        ..set(&Position::new(17, 5), GameOfLife::Alive);
-        ..set(&Position::new(17, 6), GameOfLife::Alive);
-        ..set(&Position::new(17, 7), GameOfLife::Alive);
-        ..set(&Position::new(18, 6), GameOfLife::Alive);
-        ..set(&Position::new(21, 3), GameOfLife::Alive);
-        ..set(&Position::new(21, 4), GameOfLife::Alive);
-        ..set(&Position::new(21, 5), GameOfLife::Alive);
-        ..set(&Position::new(22, 3), GameOfLife::Alive);
-        ..set(&Position::new(22, 4), GameOfLife::Alive);
-        ..set(&Position::new(22, 5), GameOfLife::Alive);
-        ..set(&Position::new(23, 2), GameOfLife::Alive);
-        ..set(&Position::new(23, 6), GameOfLife::Alive);
-        ..set(&Position::new(25, 1), GameOfLife::Alive);
-        ..set(&Position::new(25, 2), GameOfLife::Alive);
-        ..set(&Position::new(25, 6), GameOfLife::Alive);
-        ..set(&Position::new(25, 7), GameOfLife::Alive);
-        ..set(&Position::new(35, 3), GameOfLife::Alive);
-        ..set(&Position::new(35, 4), GameOfLife::Alive);
-        ..set(&Position::new(36, 3), GameOfLife::Alive);
-        ..set(&Position::new(36, 4), GameOfLife::Alive);
+        ..set(&Position::new(1, 5), GOLStates::Alive);
+        ..set(&Position::new(1, 6), GOLStates::Alive);
+        ..set(&Position::new(2, 5), GOLStates::Alive);
+        ..set(&Position::new(2, 6), GOLStates::Alive);
+        ..set(&Position::new(11, 5), GOLStates::Alive);
+        ..set(&Position::new(11, 6), GOLStates::Alive);
+        ..set(&Position::new(11, 7), GOLStates::Alive);
+        ..set(&Position::new(12, 4), GOLStates::Alive);
+        ..set(&Position::new(12, 8), GOLStates::Alive);
+        ..set(&Position::new(13, 3), GOLStates::Alive);
+        ..set(&Position::new(13, 9), GOLStates::Alive);
+        ..set(&Position::new(14, 3), GOLStates::Alive);
+        ..set(&Position::new(14, 9), GOLStates::Alive);
+        ..set(&Position::new(15, 6), GOLStates::Alive);
+        ..set(&Position::new(16, 4), GOLStates::Alive);
+        ..set(&Position::new(16, 8), GOLStates::Alive);
+        ..set(&Position::new(17, 5), GOLStates::Alive);
+        ..set(&Position::new(17, 6), GOLStates::Alive);
+        ..set(&Position::new(17, 7), GOLStates::Alive);
+        ..set(&Position::new(18, 6), GOLStates::Alive);
+        ..set(&Position::new(21, 3), GOLStates::Alive);
+        ..set(&Position::new(21, 4), GOLStates::Alive);
+        ..set(&Position::new(21, 5), GOLStates::Alive);
+        ..set(&Position::new(22, 3), GOLStates::Alive);
+        ..set(&Position::new(22, 4), GOLStates::Alive);
+        ..set(&Position::new(22, 5), GOLStates::Alive);
+        ..set(&Position::new(23, 2), GOLStates::Alive);
+        ..set(&Position::new(23, 6), GOLStates::Alive);
+        ..set(&Position::new(25, 1), GOLStates::Alive);
+        ..set(&Position::new(25, 2), GOLStates::Alive);
+        ..set(&Position::new(25, 6), GOLStates::Alive);
+        ..set(&Position::new(25, 7), GOLStates::Alive);
+        ..set(&Position::new(35, 3), GOLStates::Alive);
+        ..set(&Position::new(35, 4), GOLStates::Alive);
+        ..set(&Position::new(36, 3), GOLStates::Alive);
+        ..set(&Position::new(36, 4), GOLStates::Alive);
     );
-    Simulator::new("Conway Cannon", &grid)
+    Simulator::new("Conway Cannon", gol, &grid)
 }

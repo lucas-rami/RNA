@@ -4,17 +4,19 @@ pub mod grid;
 use automaton::CellularAutomaton;
 use grid::{Dimensions, Grid, Position};
 
-pub struct Simulator<C: CellularAutomaton> {
+pub struct Simulator<S: Copy, C: CellularAutomaton<S>> {
     name: String,
-    init_state: Grid<C>,
-    grid: Grid<C>,
+    automaton: C,
+    init_state: Grid<S>,
+    grid: Grid<S>,
     current_gen: u64,
 }
 
-impl<C: CellularAutomaton> Simulator<C> {
-    pub fn new(name: &str, grid: &Grid<C>) -> Self {
+impl<S: Copy, C: CellularAutomaton<S>> Simulator<S, C> {
+    pub fn new(name: &str, automaton: C, grid: &Grid<S>) -> Self {
         Self {
             name: String::from(name),
+            automaton,
             init_state: grid.clone(),
             grid: grid.clone(),
             current_gen: 0,
@@ -24,12 +26,12 @@ impl<C: CellularAutomaton> Simulator<C> {
     pub fn run(&mut self, nb_gens: u64) -> () {
         for _ in 0..nb_gens {
             let dim = self.grid.dim();
-            let mut new_grid = Grid::new(dim.clone());
+            let mut new_grid = Grid::new(dim.clone(), &self.automaton.default());
             for row in 0..dim.nb_rows {
                 for col in 0..dim.nb_cols {
                     let pos = Position::new(col, row);
                     let view = self.grid.view(pos.clone());
-                    let new_state = self.grid.get(&pos).update_cpu(&view);
+                    let new_state = self.automaton.update_cpu(&view);
                     new_grid.set(&pos, new_state);
                 }
             }
@@ -38,7 +40,11 @@ impl<C: CellularAutomaton> Simulator<C> {
         self.current_gen += nb_gens
     }
 
-    pub fn get_cell(&self, pos: &Position) -> &C {
+    pub fn automaton(&self) -> &C {
+        &self.automaton
+    }
+
+    pub fn get_cell(&self, pos: &Position) -> &S {
         self.grid.get(pos)
     }
 

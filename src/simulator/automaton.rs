@@ -1,22 +1,22 @@
 use super::grid::GridView;
 use crossterm::style::StyledContent;
 
-pub trait CellularAutomaton: Clone {
-    fn all_states() -> Vec<Self>;
-    
-    fn update_cpu<'a>(&self, grid: &GridView<'a, Self>) -> Self;
+pub trait CellularAutomaton<S: Copy> {
+    fn all_states(&self) -> Vec<S>;
 
-    fn default() -> Self;
+    fn update_cpu<'a>(&self, grid: &GridView<'a, S>) -> S;
 
-    fn name(&self) -> String {
-        String::from("Cellular Automaton")
+    fn default(&self) -> S;
+
+    fn name(&self) -> &str {
+        "Cellular Automaton"
     }
 }
 
-pub trait TermDrawable: PartialEq + Eq + std::hash::Hash {
-    fn style(&self) -> StyledContent<char>;
-} 
+pub trait TermDrawableAutomaton<S: Copy>: CellularAutomaton<S> {
+    fn style(&self, state: &S) -> &StyledContent<char>;
+}
 
-pub trait GPUCompute: CellularAutomaton {
+pub trait GPUCompute<S: Copy>: CellularAutomaton<S> {
     fn update_gpu(&self) -> String;
 }

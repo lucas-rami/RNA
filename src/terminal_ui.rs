@@ -1,6 +1,6 @@
 use crate::commands::Command;
 use crate::simulator::{
-    automaton::{CellularAutomaton, TermDrawable},
+    automaton::TermDrawableAutomaton,
     grid::Position,
     Simulator,
 };
@@ -27,17 +27,17 @@ const RUN: &str = "run";
 const GOTO: &str = "goto";
 const VIEW: &str = "view";
 
-pub struct TerminalUI<C: CellularAutomaton + TermDrawable> {
+pub struct TerminalUI<S: Copy, C: TermDrawableAutomaton<S>> {
     size: Size,
     auto_mod: Module,
     info_mod: Module,
     view: (usize, usize),
     commands: Vec<Command>,
-    simulator: Simulator<C>,
+    simulator: Simulator<S, C>,
 }
 
-impl<C: CellularAutomaton + TermDrawable> TerminalUI<C> {
-    pub fn new(simulator: Simulator<C>) -> Self {
+impl<S: Copy, C: TermDrawableAutomaton<S>> TerminalUI<S, C> {
+    pub fn new(simulator: Simulator<S, C>) -> Self {
         // Clear terminal
         queue!(stdout(), terminal::Clear(terminal::ClearType::All))
             .expect("Failed to clear terminal.");
@@ -316,8 +316,9 @@ impl<C: CellularAutomaton + TermDrawable> TerminalUI<C> {
             )
             .expect("Failed to move cursor.");
             for x in 0..render_size.0 {
-                let c = self.simulator.get_cell(&Position::new(self.view.0 + x, row)).style().clone();
-                queue!(stdout, PrintStyledContent(c)).expect("Failed to display simulator");
+                let state = self.simulator.get_cell(&Position::new(self.view.0 + x, row)); 
+                let c = self.simulator.automaton().style(state);
+                queue!(stdout, PrintStyledContent(c.clone())).expect("Failed to display simulator");
             }
             // Next row
             row += 1
