@@ -336,8 +336,8 @@ impl<C: CellularAutomaton + TermDrawable> TerminalUI<C> {
             style(String::from(" Total size: ")).attribute(Attribute::Italic),
             style(format!(
                 "({}, {})",
-                auto_size.nb_rows.to_string(),
-                auto_size.nb_cols.to_string()
+                auto_size.nb_cols.to_string(),
+                auto_size.nb_rows.to_string()
             )),
         ]);
         let view = StyledText::from(vec![
