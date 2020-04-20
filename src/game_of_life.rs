@@ -2,7 +2,7 @@ use crate::simulator::grid::{Grid, GridView, Position, RelCoords};
 use crate::simulator::{
     automaton::{CellularAutomaton, TermDrawableAutomaton},
     grid::Dimensions,
-    Simulator,
+    CPUSimulator,
 };
 use cascade::cascade;
 use crossterm::style::{style, Attribute, Color, StyledContent};
@@ -92,7 +92,7 @@ impl TermDrawableAutomaton<GOLStates> for GameOfLife {
     }
 }
 
-pub fn conway_canon() -> Simulator<GOLStates, GameOfLife> {
+pub fn conway_canon() -> CPUSimulator<GOLStates, GameOfLife> {
     let gol = GameOfLife::new();
     let mut grid = Grid::new(Dimensions::new(100, 200), &gol.default());
     grid = cascade!(
@@ -134,5 +134,5 @@ pub fn conway_canon() -> Simulator<GOLStates, GameOfLife> {
         ..set(&Position::new(36, 3), GOLStates::Alive);
         ..set(&Position::new(36, 4), GOLStates::Alive);
     );
-    Simulator::new("Conway Cannon", gol, &grid)
+    CPUSimulator::new("Conway Cannon", gol, &grid)
 }

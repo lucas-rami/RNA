@@ -13,6 +13,7 @@ use crossterm::{
 };
 use std::io::{stdout, Write};
 use std::{thread, time};
+use std::marker::PhantomData;
 
 mod module;
 mod styled_text;
@@ -27,17 +28,18 @@ const RUN: &str = "run";
 const GOTO: &str = "goto";
 const VIEW: &str = "view";
 
-pub struct TerminalUI<S: Copy, C: TermDrawableAutomaton<S>> {
+pub struct TerminalUI<S: Copy, C: TermDrawableAutomaton<S>, Sim: Simulator<S, C>> {
     size: Size,
     auto_mod: Module,
     info_mod: Module,
     view: (usize, usize),
     commands: Vec<Command>,
-    simulator: Simulator<S, C>,
+    simulator: Sim,
+    _marker: PhantomData<(S, C)>,
 }
 
-impl<S: Copy, C: TermDrawableAutomaton<S>> TerminalUI<S, C> {
-    pub fn new(simulator: Simulator<S, C>) -> Self {
+impl<S: Copy, C: TermDrawableAutomaton<S>, Sim: Simulator<S, C>> TerminalUI<S, C, Sim> {
+    pub fn new(simulator: Sim) -> Self {
         // Clear terminal
         queue!(stdout(), terminal::Clear(terminal::ClearType::All))
             .expect("Failed to clear terminal.");
@@ -55,10 +57,11 @@ impl<S: Copy, C: TermDrawableAutomaton<S>> TerminalUI<S, C> {
                 Command::new(VIEW, vec!["x", "y"]),
             ],
             simulator,
+            _marker: PhantomData,
         };
 
         // Set simulator title and draw initial state
-        let title = StyledText::from(vec![style(String::from(ui.simulator.get_name()))]);
+        let title = StyledText::from(vec![style(String::from(ui.simulator.name()))]);
         ui.auto_mod.set_title(title);
         ui.draw_automaton();
         ui
@@ -316,7 +319,7 @@ impl<S: Copy, C: TermDrawableAutomaton<S>> TerminalUI<S, C> {
             )
             .expect("Failed to move cursor.");
             for x in 0..render_size.0 {
-                let state = self.simulator.get_cell(&Position::new(self.view.0 + x, row)); 
+                let state = self.simulator.cell(&Position::new(self.view.0 + x, row)); 
                 let c = self.simulator.automaton().style(state);
                 queue!(stdout, PrintStyledContent(c.clone())).expect("Failed to display simulator");
             }

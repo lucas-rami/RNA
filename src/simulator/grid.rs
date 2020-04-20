@@ -1,5 +1,3 @@
-use super::automaton::CellularAutomaton;
-
 #[derive(Clone)]
 pub struct Grid<T: Clone> {
     dim: Dimensions,

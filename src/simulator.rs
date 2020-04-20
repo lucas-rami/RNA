@@ -4,7 +4,16 @@ pub mod grid;
 use automaton::CellularAutomaton;
 use grid::{Dimensions, Grid, Position};
 
-pub struct Simulator<S: Copy, C: CellularAutomaton<S>> {
+pub trait Simulator<S: Copy, C: CellularAutomaton<S>> {
+    fn run(&mut self, nb_gens: u64) -> ();
+    fn automaton(&self) -> &C;
+    fn cell(&self, pos: &Position) -> &S;
+    fn size(&self) -> &Dimensions;
+    fn name(&self) -> &str;
+    fn current_gen(&self) -> u64;
+}
+
+pub struct CPUSimulator<S: Copy, C: CellularAutomaton<S>> {
     name: String,
     automaton: C,
     init_state: Grid<S>,
@@ -12,7 +21,7 @@ pub struct Simulator<S: Copy, C: CellularAutomaton<S>> {
     current_gen: u64,
 }
 
-impl<S: Copy, C: CellularAutomaton<S>> Simulator<S, C> {
+impl<S: Copy, C: CellularAutomaton<S>> CPUSimulator<S, C> {
     pub fn new(name: &str, automaton: C, grid: &Grid<S>) -> Self {
         Self {
             name: String::from(name),
@@ -22,8 +31,10 @@ impl<S: Copy, C: CellularAutomaton<S>> Simulator<S, C> {
             current_gen: 0,
         }
     }
+}
 
-    pub fn run(&mut self, nb_gens: u64) -> () {
+impl<S: Copy, C: CellularAutomaton<S>> Simulator<S, C> for CPUSimulator<S, C> {
+    fn run(&mut self, nb_gens: u64) -> () {
         for _ in 0..nb_gens {
             let dim = self.grid.dim();
             let mut new_grid = Grid::new(dim.clone(), &self.automaton.default());
@@ -40,28 +51,23 @@ impl<S: Copy, C: CellularAutomaton<S>> Simulator<S, C> {
         self.current_gen += nb_gens
     }
 
-    pub fn automaton(&self) -> &C {
+    fn automaton(&self) -> &C {
         &self.automaton
     }
 
-    pub fn get_cell(&self, pos: &Position) -> &S {
+    fn cell(&self, pos: &Position) -> &S {
         self.grid.get(pos)
     }
 
-    pub fn size(&self) -> &Dimensions {
+    fn size(&self) -> &Dimensions {
         self.init_state.dim()
     }
 
-    pub fn get_name(&self) -> &str {
+    fn name(&self) -> &str {
         &self.name[..]
     }
 
-    pub fn current_gen(&self) -> u64 {
+    fn current_gen(&self) -> u64 {
         self.current_gen
-    }
-
-    pub fn reset(&mut self) -> () {
-        self.current_gen = 0;
-        self.grid = self.init_state.clone();
     }
 }
