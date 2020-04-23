@@ -1,10 +1,8 @@
-mod simulator;
-mod commands;
-mod game_of_life;
-mod terminal_ui;
-use terminal_ui::TerminalUI;
+// Standard library
+use std::sync::Arc;
 
-use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
+// External libraries
+use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool, DeviceLocalBuffer};
 use vulkano::command_buffer::AutoCommandBufferBuilder;
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::descriptor::PipelineLayoutAbstract;
@@ -14,12 +12,30 @@ use vulkano::pipeline::ComputePipeline;
 use vulkano::sync;
 use vulkano::sync::GpuFuture;
 
-use std::sync::Arc;
+// CELL
+mod commands;
+mod game_of_life;
+mod simulator;
+mod terminal_ui;
+use game_of_life::GameOfLife;
+use simulator::{
+    grid::{Dimensions, Grid},
+    GPUSimulator,
+};
+use terminal_ui::TerminalUI;
 
 fn main() -> () {
-    let mut term_ui = TerminalUI::new(game_of_life::conway_canon());
-    term_ui.cmd_interpreter().unwrap();
-    // compute_shader();
+    // let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
+    // let gpu_sim = GPUSimulator::new(
+    //     "Test",
+    //     GameOfLife::new(),
+    //     Grid::new(Dimensions::new(10, 10), GameOfLife::default()),
+    //     instance.clone(),
+    // );
+
+    // let mut term_ui = TerminalUI::new(game_of_life::conway_canon());
+    // term_ui.cmd_interpreter().unwrap();
+    buffer_test();
 }
 
 fn compute_shader() -> () {
@@ -172,4 +188,108 @@ fn compute_shader() -> () {
     for n in 0..65536u32 {
         assert_eq!(data_buffer_content[n as usize], n * 12);
     }
+}
+
+fn buffer_test() -> () {
+    // As with other examples, the first step is to create an instance.
+    let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
+
+    // Choose which physical device to use.
+    let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
+
+    // Choose the queue of the physical device which is going to run our compute operation.
+    let queue_family = physical
+        .queue_families()
+        .find(|&q| q.supports_compute())
+        .unwrap();
+
+    // Now initializing the device.
+    let (device, mut queues) = Device::new(
+        physical,
+        physical.supported_features(),
+        &DeviceExtensions {
+            khr_storage_buffer_storage_class: true,
+            ..DeviceExtensions::none()
+        },
+        [(queue_family, 0.5)].iter().cloned(),
+    )
+    .unwrap();
+    let queue = queues.next().unwrap();
+
+    // Compute pipeline
+    let pipeline = Arc::new({
+        mod cs {
+            vulkano_shaders::shader! {
+                ty: "compute",
+                src: "
+                     #version 450
+                     layout(local_size_x = 4, local_size_y = 1, local_size_z = 1) in;
+                     layout(set = 0, binding = 0) buffer Data {
+                         uint data[];
+                     } data;
+                     void main() {
+                         uint idx = gl_GlobalInvocationID.x;
+                         data.data[idx] *= 10;
+                     }
+                 "
+            }
+        }
+        let shader = cs::Shader::load(device.clone()).unwrap();
+        ComputePipeline::new(device.clone(), &shader.main_entry_point(), &()).unwrap()
+    });
+
+    // Buffers
+    let gpu_buffer: Arc<DeviceLocalBuffer<[u32; 16]>> = DeviceLocalBuffer::new(
+        device.clone(),
+        BufferUsage::all(),
+        physical.queue_families(),
+    )
+    .unwrap();
+
+    let cpu_buffer: Arc<CpuAccessibleBuffer<[u32; 16]>> = CpuAccessibleBuffer::from_data(
+        device.clone(),
+        BufferUsage::all(),
+        true,
+        [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+    )
+    .unwrap();
+
+    // Descriptor set
+    let layout = pipeline.layout().descriptor_set_layout(0).unwrap();
+    let set = Arc::new(
+        PersistentDescriptorSet::start(layout.clone())
+            .add_buffer(gpu_buffer.clone())
+            .unwrap()
+            .build()
+            .unwrap(),
+    );
+
+    // Command buffer.
+    let command_buffer =
+        AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family())
+            .unwrap()
+            .copy_buffer(cpu_buffer.clone(), gpu_buffer.clone())
+            .unwrap()
+            .dispatch([4, 1, 1], pipeline.clone(), set.clone(), ())
+            .unwrap()
+            .copy_buffer(gpu_buffer.clone(), cpu_buffer.clone())
+            .unwrap()
+            .build()
+            .unwrap();
+
+    // Execute the command buffer
+    let future = sync::now(device.clone())
+        .then_execute(queue.clone(), command_buffer)
+        .unwrap()
+        .then_signal_fence_and_flush()
+        .unwrap();
+
+    future.wait(None).unwrap();
+
+    let cpu_buffer_content = cpu_buffer.read().unwrap();
+    for n in 0..16u32 {
+        println!("{}", cpu_buffer_content[n as usize]);
+    }
+
+    println!("Done!");
 }
