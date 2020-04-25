@@ -1,34 +1,31 @@
-use crate::commands::Command;
-use crate::simulator::{
-    automaton::TermDrawableAutomaton,
-    grid::Position,
-    Simulator,
-};
+// Standard library
+use std::io::{stdout, Write};
+use std::marker::PhantomData;
+use std::{thread, time};
+
+// External libraries
 use crossterm::{
     cursor,
     event::{Event, KeyCode},
     queue,
-    style::{style, Attribute, Print, PrintStyledContent},
+    style::{style, Attribute, Print, PrintStyledContent, StyledContent},
     terminal,
 };
-use std::io::{stdout, Write};
-use std::{thread, time};
-use std::marker::PhantomData;
 
+// CELL
 mod module;
 mod styled_text;
 
+use crate::commands::Command;
+use crate::simulator::{grid::Position, CellularAutomaton, Simulator};
 use module::Module;
 use styled_text::StyledText;
 
-type Size = (u16, u16);
+pub trait TerminalAutomaton<S: Copy>: CellularAutomaton<S> {
+    fn style(&self, state: &S) -> &StyledContent<char>;
+}
 
-const HEIGHT_INFO: u16 = 10;
-const RUN: &str = "run";
-const GOTO: &str = "goto";
-const VIEW: &str = "view";
-
-pub struct TerminalUI<S: Copy, C: TermDrawableAutomaton<S>, Sim: Simulator<S, C>> {
+pub struct TerminalUI<S: Copy, C: TerminalAutomaton<S>, Sim: Simulator<S, C>> {
     size: Size,
     auto_mod: Module,
     info_mod: Module,
@@ -38,7 +35,7 @@ pub struct TerminalUI<S: Copy, C: TermDrawableAutomaton<S>, Sim: Simulator<S, C>
     _marker: PhantomData<(S, C)>,
 }
 
-impl<S: Copy, C: TermDrawableAutomaton<S>, Sim: Simulator<S, C>> TerminalUI<S, C, Sim> {
+impl<S: Copy, C: TerminalAutomaton<S>, Sim: Simulator<S, C>> TerminalUI<S, C, Sim> {
     pub fn new(simulator: Sim) -> Self {
         // Clear terminal
         queue!(stdout(), terminal::Clear(terminal::ClearType::All))
@@ -319,7 +316,7 @@ impl<S: Copy, C: TermDrawableAutomaton<S>, Sim: Simulator<S, C>> TerminalUI<S, C
             )
             .expect("Failed to move cursor.");
             for x in 0..render_size.0 {
-                let state = self.simulator.cell(&Position::new(self.view.0 + x, row)); 
+                let state = self.simulator.cell(&Position::new(self.view.0 + x, row));
                 let c = self.simulator.automaton().style(state);
                 queue!(stdout, PrintStyledContent(c.clone())).expect("Failed to display simulator");
             }
@@ -407,3 +404,10 @@ impl<S: Copy, C: TermDrawableAutomaton<S>, Sim: Simulator<S, C>> TerminalUI<S, C
         stdout().flush().expect("Failed to flush stdout.");
     }
 }
+
+type Size = (u16, u16);
+
+const HEIGHT_INFO: u16 = 10;
+const RUN: &str = "run";
+const GOTO: &str = "goto";
+const VIEW: &str = "view";

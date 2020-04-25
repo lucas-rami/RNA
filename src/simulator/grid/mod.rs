@@ -1,5 +1,5 @@
 // CELL
-pub use self::grid_view::GridView;
+pub use grid_view::GridView;
 
 pub mod grid_view;
 

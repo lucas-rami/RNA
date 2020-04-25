@@ -6,85 +6,17 @@ use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, DeviceLocalBuffer};
 use vulkano::device::{Device, DeviceExtensions, Queue};
 use vulkano::instance::{Instance, PhysicalDevice};
+use vulkano::pipeline::ComputePipeline;
 
 // CELL
-pub mod automaton;
-pub mod grid;
-use automaton::{CellularAutomaton, GPUCompute};
-use grid::{Dimensions, Grid, Position};
+use super::cpu_simulator::CPUSimulator;
+use super::grid::{Grid, Position, Dimensions};
+use super::{CellularAutomaton, Simulator};
 
-pub trait Simulator<S: Copy, C: CellularAutomaton<S>> {
-    fn run(&mut self, nb_gens: u64) -> ();
-    fn automaton(&self) -> &C;
-    fn cell(&self, pos: &Position) -> &S;
-    fn size(&self) -> &Dimensions;
-    fn name(&self) -> &str;
-    fn current_gen(&self) -> u64;
-}
+pub trait GPUCompute<S: Copy, Pl>: CellularAutomaton<S> {
+    fn state_name(&self, state: &S) -> &str;
 
-pub struct CPUSimulator<S: Copy, C: CellularAutomaton<S>> {
-    name: String,
-    automaton: C,
-    grid: Grid<S>,
-    current_gen: u64,
-}
-
-impl<S: Copy, C: CellularAutomaton<S>> CPUSimulator<S, C> {
-    pub fn new(name: &str, automaton: C, grid: &Grid<S>) -> Self {
-        Self {
-            name: String::from(name),
-            automaton,
-            grid: grid.clone(),
-            current_gen: 0,
-        }
-    }
-}
-
-impl<S: Copy, C: CellularAutomaton<S>> Simulator<S, C> for CPUSimulator<S, C> {
-    fn run(&mut self, nb_gens: u64) -> () {
-        for _ in 0..nb_gens {
-            let dim = self.grid.dim();
-            let mut new_grid = Grid::new(dim.clone(), &self.automaton.default());
-            for row in 0..dim.nb_rows {
-                for col in 0..dim.nb_cols {
-                    let pos = Position::new(col, row);
-                    let view = self.grid.view(pos.clone());
-                    let new_state = self.automaton.update_cpu(&view);
-                    new_grid.set(&pos, new_state);
-                }
-            }
-            self.grid = new_grid;
-        }
-        self.current_gen += nb_gens
-    }
-
-    fn automaton(&self) -> &C {
-        &self.automaton
-    }
-
-    fn cell(&self, pos: &Position) -> &S {
-        self.grid.get(pos)
-    }
-
-    fn size(&self) -> &Dimensions {
-        self.grid.dim()
-    }
-
-    fn name(&self) -> &str {
-        &self.name[..]
-    }
-
-    fn current_gen(&self) -> u64 {
-        self.current_gen
-    }
-}
-
-struct VKResources {
-    instance: Arc<Instance>,
-    device: Arc<Device>,
-    comp_queue: Arc<Queue>,
-    src_buf: Arc<DeviceLocalBuffer<[u8]>>,
-    dst_buf: Arc<DeviceLocalBuffer<[u8]>>,
+    fn update_gpu(&self, device: Arc<Device>) -> ComputePipeline<Pl>;
 }
 
 pub struct GPUSimulator<S: Copy, Pl, C: CellularAutomaton<S> + GPUCompute<S, Pl>> {
@@ -96,8 +28,7 @@ pub struct GPUSimulator<S: Copy, Pl, C: CellularAutomaton<S> + GPUCompute<S, Pl>
 impl<S: Copy, Pl, C: CellularAutomaton<S> + GPUCompute<S, Pl>> GPUSimulator<S, Pl, C> {
     pub fn new(name: &str, automaton: C, grid: &Grid<S>, instance: Arc<Instance>) -> Self {
         let vk = {
-
-            // Select a queue family from the physical device  
+            // Select a queue family from the physical device
             let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
             let comp_queue_family = physical
                 .queue_families()
@@ -178,4 +109,12 @@ impl<S: Copy, Pl, C: CellularAutomaton<S> + GPUCompute<S, Pl>> Simulator<S, C>
     fn current_gen(&self) -> u64 {
         self.simulator.current_gen()
     }
+}
+
+struct VKResources {
+    instance: Arc<Instance>,
+    device: Arc<Device>,
+    comp_queue: Arc<Queue>,
+    src_buf: Arc<DeviceLocalBuffer<[u8]>>,
+    dst_buf: Arc<DeviceLocalBuffer<[u8]>>,
 }

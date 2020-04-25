@@ -1,12 +1,14 @@
-use crate::simulator::grid::{Grid, GridView, Position, RelCoords};
-use crate::simulator::{
-    automaton::{CellularAutomaton, TermDrawableAutomaton},
-    grid::Dimensions,
-    CPUSimulator,
-};
+// Standard library
+use std::collections::HashMap;
+
+// External libraries
 use cascade::cascade;
 use crossterm::style::{style, Attribute, Color, StyledContent};
-use std::collections::HashMap;
+
+// CELL
+use crate::simulator::grid::{Grid, GridView, Position, RelCoords};
+use crate::simulator::{grid::Dimensions, CPUSimulator, CellularAutomaton};
+use crate::terminal_ui::TerminalAutomaton;
 
 #[derive(Copy, Clone, Eq, PartialEq, std::hash::Hash)]
 pub enum GOLStates {
@@ -86,7 +88,7 @@ impl CellularAutomaton<GOLStates> for GameOfLife {
     }
 }
 
-impl TermDrawableAutomaton<GOLStates> for GameOfLife {
+impl TerminalAutomaton<GOLStates> for GameOfLife {
     fn style(&self, state: &GOLStates) -> &StyledContent<char> {
         &self.style_map.get(state).unwrap()
     }
