@@ -1,11 +1,18 @@
 // Standard library
 use std::collections::HashMap;
+use std::sync::Arc;
 
 // External libraries
 use cascade::cascade;
 use crossterm::style::{style, Attribute, Color, StyledContent};
+use vulkano::command_buffer::AutoCommandBufferBuilder;
+use vulkano::descriptor::descriptor_set::{DescriptorSetsCollection, UnsafeDescriptorSetLayout};
+use vulkano::descriptor::pipeline_layout::{PipelineLayout, PipelineLayoutAbstract};
+use vulkano::device::Device;
+use vulkano::pipeline::ComputePipeline;
 
 // CELL
+use crate::simulator::gpu_simulator::GPUCompute;
 use crate::simulator::grid::{Grid, GridView, Position, RelCoords};
 use crate::simulator::{grid::Dimensions, CPUSimulator, CellularAutomaton};
 use crate::terminal_ui::TerminalAutomaton;
@@ -19,6 +26,12 @@ pub enum GOLStates {
 pub struct GameOfLife {
     name: &'static str,
     style_map: HashMap<GOLStates, StyledContent<char>>,
+    vk: Option<VKResources>,
+}
+
+struct VKResources {
+    pipeline: Arc<ComputePipeline<PipelineLayout<shader::Layout>>>,
+    layout: Arc<UnsafeDescriptorSetLayout>,
 }
 
 impl GameOfLife {
@@ -29,9 +42,11 @@ impl GameOfLife {
             GOLStates::Alive,
             style('#').with(Color::Green).attribute(Attribute::Bold),
         );
+
         Self {
             name: "Conway's Game of Life",
             style_map,
+            vk: None,
         }
     }
 }
@@ -94,6 +109,54 @@ impl TerminalAutomaton<GOLStates> for GameOfLife {
     }
 }
 
+impl GPUCompute<GOLStates> for GameOfLife {
+    fn id_from_state(&self, state: &GOLStates) -> u32 {
+        match state {
+            GOLStates::Dead => 0,
+            GOLStates::Alive => 1,
+        }
+    }
+
+    fn state_from_id(&self, id: u32) -> GOLStates {
+        match id {
+            0 => GOLStates::Dead,
+            1 => GOLStates::Alive,
+            _ => panic!("Dummy dum dum"),
+        }
+    }
+
+    fn bind_device(&mut self, device: &Arc<Device>) -> () {
+        let shader = shader::Shader::load(device.clone()).unwrap();
+        let pipeline = Arc::new(
+            ComputePipeline::new(device.clone(), &shader.main_entry_point(), &()).unwrap(),
+        );
+        let layout = pipeline.layout().descriptor_set_layout(0).unwrap().clone();
+        self.vk = Some(VKResources { pipeline, layout });
+    }
+
+    fn gpu_layout(&self) -> &Arc<UnsafeDescriptorSetLayout> {
+        let vk = self
+            .vk
+            .as_ref()
+            .expect("Automaton hasn't been binded to Vulkan device.");
+        &vk.layout
+    }
+
+    fn gpu_dispatch<U>(
+        &self,
+        cmd_buffer: AutoCommandBufferBuilder<U>,
+        sets: impl DescriptorSetsCollection,
+    ) -> AutoCommandBufferBuilder<U> {
+        let vk = self
+            .vk
+            .as_ref()
+            .expect("Automaton hasn't been binded to Vulkan device.");
+        cmd_buffer
+            .dispatch([1, 1, 1], vk.pipeline.clone(), sets, ())
+            .unwrap()
+    }
+}
+
 pub fn conway_canon() -> CPUSimulator<GOLStates, GameOfLife> {
     let gol = GameOfLife::new();
     let mut grid = Grid::new(Dimensions::new(100, 200), &gol.default());
@@ -137,4 +200,22 @@ pub fn conway_canon() -> CPUSimulator<GOLStates, GameOfLife> {
         ..set(&Position::new(36, 4), GOLStates::Alive);
     );
     CPUSimulator::new("Conway Cannon", gol, &grid)
+}
+
+mod shader {
+    vulkano_shaders::shader! {
+        ty: "compute",
+        src: "
+             #version 450
+             layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+             layout(set = 0, binding = 0) buffer Data {
+                 uint data[];
+             } data;
+
+             void main() {
+                 uint idx = gl_GlobalInvocationID.x;
+                 data.data[idx] *= 12;
+             }
+         "
+    }
 }

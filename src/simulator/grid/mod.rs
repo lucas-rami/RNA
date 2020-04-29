@@ -1,7 +1,8 @@
 // CELL
+pub mod grid_view;
+
 pub use grid_view::GridView;
 
-pub mod grid_view;
 
 #[derive(Clone)]
 pub struct Grid<T: Clone> {
@@ -45,10 +46,19 @@ impl<T: Clone> Grid<T> {
         &self.dim
     }
 
+    pub fn iter<'a>(&'a self) -> std::slice::Iter<'a, T> {
+        self.data.iter()
+    }
+
+    pub fn switch_data(&mut self, new_data: Vec<T>) -> () {
+        self.data = new_data
+    }
+
     fn pos_within_bounds(&self, pos: &Position) -> bool {
         pos.row < self.dim.nb_rows && pos.col < self.dim.nb_cols
     }
 }
+
 
 #[derive(Clone)]
 pub struct Position {
@@ -71,6 +81,10 @@ pub struct Dimensions {
 impl Dimensions {
     pub fn new(nb_rows: usize, nb_cols: usize) -> Self {
         Self { nb_rows, nb_cols }
+    }
+
+    pub fn nb_elems(&self) -> usize {
+        self.nb_rows * self.nb_cols
     }
 }
 

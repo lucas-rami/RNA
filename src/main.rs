@@ -2,7 +2,7 @@
 use std::sync::Arc;
 
 // External libraries
-use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool, DeviceLocalBuffer};
+use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, DeviceLocalBuffer};
 use vulkano::command_buffer::AutoCommandBufferBuilder;
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::descriptor::PipelineLayoutAbstract;

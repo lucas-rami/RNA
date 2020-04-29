@@ -57,4 +57,5 @@ impl<S: Copy, C: CellularAutomaton<S>> Simulator<S, C> for CPUSimulator<S, C> {
     fn current_gen(&self) -> u64 {
         self.current_gen
     }
+
 }
