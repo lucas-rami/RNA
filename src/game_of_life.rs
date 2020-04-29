@@ -12,21 +12,21 @@ use vulkano::device::Device;
 use vulkano::pipeline::ComputePipeline;
 
 // CELL
-use crate::simulator::gpu_simulator::GPUCompute;
 use crate::simulator::grid::{Grid, GridView, Position, RelCoords};
-use crate::simulator::{grid::Dimensions, CPUSimulator, CellularAutomaton};
+use crate::simulator::{grid::Dimensions, CellularAutomaton};
+use crate::simulator::GPUCompute;
 use crate::terminal_ui::TerminalAutomaton;
-
-#[derive(Copy, Clone, Eq, PartialEq, std::hash::Hash)]
-pub enum GOLStates {
-    Dead,
-    Alive,
-}
 
 pub struct GameOfLife {
     name: &'static str,
-    style_map: HashMap<GOLStates, StyledContent<char>>,
+    style_map: HashMap<States, StyledContent<char>>,
     vk: Option<VKResources>,
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, std::hash::Hash)]
+pub enum States {
+    Dead,
+    Alive,
 }
 
 struct VKResources {
@@ -37,9 +37,9 @@ struct VKResources {
 impl GameOfLife {
     pub fn new() -> Self {
         let mut style_map = HashMap::new();
-        style_map.insert(GOLStates::Dead, style('·').with(Color::Grey));
+        style_map.insert(States::Dead, style('·').with(Color::Grey));
         style_map.insert(
-            GOLStates::Alive,
+            States::Alive,
             style('#').with(Color::Green).attribute(Attribute::Bold),
         );
 
@@ -51,12 +51,12 @@ impl GameOfLife {
     }
 }
 
-impl CellularAutomaton<GOLStates> for GameOfLife {
-    fn all_states(&self) -> Vec<GOLStates> {
-        vec![GOLStates::Dead, GOLStates::Alive]
+impl CellularAutomaton<States> for GameOfLife {
+    fn all_states(&self) -> Vec<States> {
+        vec![States::Dead, States::Alive]
     }
 
-    fn update_cpu<'a>(&self, grid: &GridView<'a, GOLStates>) -> GOLStates {
+    fn update_cpu<'a>(&self, grid: &GridView<'a, States>) -> States {
         // Count the number of alive cells around us
         let neighbors = vec![
             RelCoords::new(-1, -1),
@@ -69,7 +69,7 @@ impl CellularAutomaton<GOLStates> for GameOfLife {
             RelCoords::new(0, -1),
         ];
         let nb_alive_neighbors = grid.get_multiple(neighbors).iter().fold(0, |cnt, cell| {
-            if let GOLStates::Alive = cell {
+            if let States::Alive = cell {
                 cnt + 1
             } else {
                 cnt
@@ -78,24 +78,24 @@ impl CellularAutomaton<GOLStates> for GameOfLife {
 
         // Apply the evolution rule
         match grid.state() {
-            GOLStates::Dead => {
+            States::Dead => {
                 if nb_alive_neighbors == 3 {
-                    GOLStates::Alive
+                    States::Alive
                 } else {
-                    GOLStates::Dead
+                    States::Dead
                 }
             }
-            GOLStates::Alive => {
+            States::Alive => {
                 if nb_alive_neighbors == 2 || nb_alive_neighbors == 3 {
-                    GOLStates::Alive
+                    States::Alive
                 } else {
-                    GOLStates::Dead
+                    States::Dead
                 }
             }
         }
     }
-    fn default(&self) -> GOLStates {
-        GOLStates::Dead
+    fn default(&self) -> States {
+        States::Dead
     }
 
     fn name(&self) -> &str {
@@ -103,24 +103,24 @@ impl CellularAutomaton<GOLStates> for GameOfLife {
     }
 }
 
-impl TerminalAutomaton<GOLStates> for GameOfLife {
-    fn style(&self, state: &GOLStates) -> &StyledContent<char> {
+impl TerminalAutomaton<States> for GameOfLife {
+    fn style(&self, state: &States) -> &StyledContent<char> {
         &self.style_map.get(state).unwrap()
     }
 }
 
-impl GPUCompute<GOLStates> for GameOfLife {
-    fn id_from_state(&self, state: &GOLStates) -> u32 {
+impl GPUCompute<States> for GameOfLife {
+    fn id_from_state(&self, state: &States) -> u32 {
         match state {
-            GOLStates::Dead => 0,
-            GOLStates::Alive => 1,
+            States::Dead => 0,
+            States::Alive => 1,
         }
     }
 
-    fn state_from_id(&self, id: u32) -> GOLStates {
+    fn state_from_id(&self, id: u32) -> States {
         match id {
-            0 => GOLStates::Dead,
-            1 => GOLStates::Alive,
+            0 => States::Dead,
+            1 => States::Alive,
             _ => panic!("Dummy dum dum"),
         }
     }
@@ -157,49 +157,48 @@ impl GPUCompute<GOLStates> for GameOfLife {
     }
 }
 
-pub fn conway_canon() -> CPUSimulator<GOLStates, GameOfLife> {
-    let gol = GameOfLife::new();
-    let mut grid = Grid::new(Dimensions::new(100, 200), &gol.default());
+pub fn conway_canon() -> Grid<States> {
+    let mut grid = Grid::new(Dimensions::new(100, 200), &States::Dead);
     grid = cascade!(
         grid;
-        ..set(&Position::new(1, 5), GOLStates::Alive);
-        ..set(&Position::new(1, 6), GOLStates::Alive);
-        ..set(&Position::new(2, 5), GOLStates::Alive);
-        ..set(&Position::new(2, 6), GOLStates::Alive);
-        ..set(&Position::new(11, 5), GOLStates::Alive);
-        ..set(&Position::new(11, 6), GOLStates::Alive);
-        ..set(&Position::new(11, 7), GOLStates::Alive);
-        ..set(&Position::new(12, 4), GOLStates::Alive);
-        ..set(&Position::new(12, 8), GOLStates::Alive);
-        ..set(&Position::new(13, 3), GOLStates::Alive);
-        ..set(&Position::new(13, 9), GOLStates::Alive);
-        ..set(&Position::new(14, 3), GOLStates::Alive);
-        ..set(&Position::new(14, 9), GOLStates::Alive);
-        ..set(&Position::new(15, 6), GOLStates::Alive);
-        ..set(&Position::new(16, 4), GOLStates::Alive);
-        ..set(&Position::new(16, 8), GOLStates::Alive);
-        ..set(&Position::new(17, 5), GOLStates::Alive);
-        ..set(&Position::new(17, 6), GOLStates::Alive);
-        ..set(&Position::new(17, 7), GOLStates::Alive);
-        ..set(&Position::new(18, 6), GOLStates::Alive);
-        ..set(&Position::new(21, 3), GOLStates::Alive);
-        ..set(&Position::new(21, 4), GOLStates::Alive);
-        ..set(&Position::new(21, 5), GOLStates::Alive);
-        ..set(&Position::new(22, 3), GOLStates::Alive);
-        ..set(&Position::new(22, 4), GOLStates::Alive);
-        ..set(&Position::new(22, 5), GOLStates::Alive);
-        ..set(&Position::new(23, 2), GOLStates::Alive);
-        ..set(&Position::new(23, 6), GOLStates::Alive);
-        ..set(&Position::new(25, 1), GOLStates::Alive);
-        ..set(&Position::new(25, 2), GOLStates::Alive);
-        ..set(&Position::new(25, 6), GOLStates::Alive);
-        ..set(&Position::new(25, 7), GOLStates::Alive);
-        ..set(&Position::new(35, 3), GOLStates::Alive);
-        ..set(&Position::new(35, 4), GOLStates::Alive);
-        ..set(&Position::new(36, 3), GOLStates::Alive);
-        ..set(&Position::new(36, 4), GOLStates::Alive);
+        ..set(&Position::new(1, 5), States::Alive);
+        ..set(&Position::new(1, 6), States::Alive);
+        ..set(&Position::new(2, 5), States::Alive);
+        ..set(&Position::new(2, 6), States::Alive);
+        ..set(&Position::new(11, 5), States::Alive);
+        ..set(&Position::new(11, 6), States::Alive);
+        ..set(&Position::new(11, 7), States::Alive);
+        ..set(&Position::new(12, 4), States::Alive);
+        ..set(&Position::new(12, 8), States::Alive);
+        ..set(&Position::new(13, 3), States::Alive);
+        ..set(&Position::new(13, 9), States::Alive);
+        ..set(&Position::new(14, 3), States::Alive);
+        ..set(&Position::new(14, 9), States::Alive);
+        ..set(&Position::new(15, 6), States::Alive);
+        ..set(&Position::new(16, 4), States::Alive);
+        ..set(&Position::new(16, 8), States::Alive);
+        ..set(&Position::new(17, 5), States::Alive);
+        ..set(&Position::new(17, 6), States::Alive);
+        ..set(&Position::new(17, 7), States::Alive);
+        ..set(&Position::new(18, 6), States::Alive);
+        ..set(&Position::new(21, 3), States::Alive);
+        ..set(&Position::new(21, 4), States::Alive);
+        ..set(&Position::new(21, 5), States::Alive);
+        ..set(&Position::new(22, 3), States::Alive);
+        ..set(&Position::new(22, 4), States::Alive);
+        ..set(&Position::new(22, 5), States::Alive);
+        ..set(&Position::new(23, 2), States::Alive);
+        ..set(&Position::new(23, 6), States::Alive);
+        ..set(&Position::new(25, 1), States::Alive);
+        ..set(&Position::new(25, 2), States::Alive);
+        ..set(&Position::new(25, 6), States::Alive);
+        ..set(&Position::new(25, 7), States::Alive);
+        ..set(&Position::new(35, 3), States::Alive);
+        ..set(&Position::new(35, 4), States::Alive);
+        ..set(&Position::new(36, 3), States::Alive);
+        ..set(&Position::new(36, 4), States::Alive);
     );
-    CPUSimulator::new("Conway Cannon", gol, &grid)
+    grid
 }
 
 mod shader {

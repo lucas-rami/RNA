@@ -9,7 +9,6 @@ use vulkano::descriptor::descriptor_set::{
 };
 use vulkano::device::{Device, DeviceExtensions, Queue};
 use vulkano::instance::{Instance, PhysicalDevice};
-use vulkano::pipeline::ComputePipeline;
 use vulkano::sync::{self, GpuFuture};
 
 // CELL

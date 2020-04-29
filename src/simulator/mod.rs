@@ -4,7 +4,7 @@ pub mod gpu_simulator;
 pub mod grid;
 
 pub use cpu_simulator::CPUSimulator;
-pub use gpu_simulator::GPUSimulator;
+pub use gpu_simulator::{GPUSimulator, GPUCompute};
 use grid::{grid_view::GridView, Dimensions, Position};
 
 pub trait CellularAutomaton<S: Copy> {
