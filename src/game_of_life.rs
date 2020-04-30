@@ -137,6 +137,7 @@ impl GPUComputableAutomaton for GameOfLife {
 
     fn gpu_dispatch<U>(
         &self,
+        dimensions: [u32; 3],
         cmd_buffer: AutoCommandBufferBuilder<U>,
         sets: impl DescriptorSetsCollection,
     ) -> AutoCommandBufferBuilder<U> {
@@ -145,7 +146,7 @@ impl GPUComputableAutomaton for GameOfLife {
             .as_ref()
             .expect("Automaton hasn't been binded to Vulkan device.");
         cmd_buffer
-            .dispatch([1, 1, 1], vk.pipeline.clone(), sets, ())
+            .dispatch(dimensions, vk.pipeline.clone(), sets, ())
             .unwrap()
     }
 }
@@ -161,7 +162,6 @@ impl Default for States {
         Self::Dead
     }
 }
-
 
 pub fn conway_canon() -> Grid<States> {
     let mut grid = Grid::new(Dimensions::new(100, 200), States::default());
@@ -210,17 +210,6 @@ pub fn conway_canon() -> Grid<States> {
 mod shader {
     vulkano_shaders::shader! {
         ty: "compute",
-        src: "
-             #version 450
-             layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
-             layout(set = 0, binding = 0) buffer Data {
-                 uint data[];
-             } data;
-
-             void main() {
-                 uint idx = gl_GlobalInvocationID.x;
-                 data.data[idx] *= 12;
-             }
-         "
+        path: "game_of_life.comp"
     }
 }

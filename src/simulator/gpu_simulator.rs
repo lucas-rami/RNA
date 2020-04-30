@@ -23,6 +23,7 @@ pub trait GPUComputableAutomaton: CellularAutomaton {
     fn gpu_layout(&self) -> &Arc<UnsafeDescriptorSetLayout>;
     fn gpu_dispatch<T>(
         &self,
+        dimensions: [u32; 3],
         cmd_buffer: AutoCommandBufferBuilder<T>,
         sets: impl DescriptorSetsCollection,
     ) -> AutoCommandBufferBuilder<T>;
@@ -75,14 +76,14 @@ impl<A: GPUComputableAutomaton> GPUSimulator<A> {
             let src_buf = DeviceLocalBuffer::array(
                 device.clone(),
                 size,
-                BufferUsage::uniform_buffer_transfer_destination(),
+                BufferUsage::all(),
                 physical.queue_families(),
             )
             .unwrap();
             let dst_buf = DeviceLocalBuffer::array(
                 device.clone(),
                 size,
-                BufferUsage::uniform_buffer_transfer_destination(),
+                BufferUsage::all(),
                 physical.queue_families(),
             )
             .unwrap();
@@ -120,6 +121,7 @@ impl<A: GPUComputableAutomaton> GPUSimulator<A> {
         let raw_data = cpu_buffer.read().unwrap();
         let mut grid = Vec::with_capacity(size);
         for i in 0..size {
+            // println!("{}", raw_data[i]);
             grid.push(self.automaton.state_from_id(raw_data[i]));
         }
         grid
@@ -163,7 +165,7 @@ impl<A: GPUComputableAutomaton> Simulator<A> for GPUSimulator<A> {
             .unwrap();
             let command_buffer = self
                 .automaton
-                .gpu_dispatch(command_buffer, set)
+                .gpu_dispatch([self.grid.dim().nb_elems() as u32, 1, 1], command_buffer, set)
                 .copy_buffer(self.vk.dst_buf.clone(), cpu_buffer.clone())
                 .unwrap()
                 .build()
@@ -180,6 +182,8 @@ impl<A: GPUComputableAutomaton> Simulator<A> for GPUSimulator<A> {
             // Update grid
             self.grid.switch_data(self.raw_to_grid(cpu_buffer));
         }
+
+        self.current_gen += nb_gens;
     }
 
     fn automaton(&self) -> &A {

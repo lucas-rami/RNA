@@ -1,0 +1,17 @@
+#version 450
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+layout(set = 0, binding = 0) buffer AutoIn {
+    uint data[];
+} auto_in;
+layout(set = 0, binding = 1) buffer AutoOut {
+    uint data[];
+} auto_out;
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    uint val = 0;
+    if (auto_in.data[idx] == 0) {
+        val = 1;
+    }
+    auto_out.data[idx] = val;
+}
