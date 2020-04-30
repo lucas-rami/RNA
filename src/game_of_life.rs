@@ -13,9 +13,9 @@ use vulkano::pipeline::ComputePipeline;
 
 // CELL
 use crate::simulator::grid::{Grid, GridView, Position, RelCoords};
-use crate::simulator::GPUCompute;
+use crate::simulator::GPUComputableAutomaton;
 use crate::simulator::{grid::Dimensions, CellularAutomaton};
-use crate::terminal_ui::TerminalAutomaton;
+use crate::terminal_ui::TermDrawableAutomaton;
 
 pub struct GameOfLife {
     name: &'static str,
@@ -45,12 +45,14 @@ impl GameOfLife {
     }
 }
 
-impl CellularAutomaton<States> for GameOfLife {
-    fn all_states(&self) -> Vec<States> {
+impl CellularAutomaton for GameOfLife {
+    type State = States;
+
+    fn all_states(&self) -> Vec<Self::State> {
         vec![States::Dead, States::Alive]
     }
 
-    fn update_cpu<'a>(&self, grid: &GridView<'a, States>) -> States {
+    fn update_cpu<'a>(&self, grid: &GridView<'a, Self::State>) -> Self::State {
         // Count the number of alive cells around us
         let neighbors = vec![
             RelCoords::new(-1, -1),
@@ -94,13 +96,13 @@ impl CellularAutomaton<States> for GameOfLife {
     }
 }
 
-impl TerminalAutomaton<States> for GameOfLife {
+impl TermDrawableAutomaton for GameOfLife {
     fn style(&self, state: &States) -> &StyledContent<char> {
         &self.style_map.get(state).unwrap()
     }
 }
 
-impl GPUCompute<States> for GameOfLife {
+impl GPUComputableAutomaton for GameOfLife {
     fn id_from_state(&self, state: &States) -> u32 {
         match state {
             States::Dead => 0,

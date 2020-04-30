@@ -15,9 +15,9 @@ use vulkano::sync::{self, GpuFuture};
 use super::grid::{Dimensions, Grid, Position};
 use super::{CellularAutomaton, Simulator};
 
-pub trait GPUCompute<S: Copy + Default>: CellularAutomaton<S> {
-    fn id_from_state(&self, state: &S) -> u32;
-    fn state_from_id(&self, id: u32) -> S;
+pub trait GPUComputableAutomaton: CellularAutomaton {
+    fn id_from_state(&self, state: &Self::State) -> u32;
+    fn state_from_id(&self, id: u32) -> Self::State;
 
     fn bind_device(&mut self, device: &Arc<Device>) -> ();
     fn gpu_layout(&self) -> &Arc<UnsafeDescriptorSetLayout>;
@@ -28,20 +28,21 @@ pub trait GPUCompute<S: Copy + Default>: CellularAutomaton<S> {
     ) -> AutoCommandBufferBuilder<T>;
 }
 
-pub struct GPUSimulator<S: Copy + Default, C: GPUCompute<S>> {
+pub struct GPUSimulator<A: GPUComputableAutomaton> {
     name: String,
-    automaton: C,
-    grid: Grid<S>,
+    automaton: A,
+    grid: Grid<A::State>,
     current_gen: u64,
     vk: VKResources,
 }
 
-impl<S, C> GPUSimulator<S, C>
-where
-    S: Copy + Default,
-    C: GPUCompute<S>,
-{
-    pub fn new(name: &str, mut automaton: C, grid: &Grid<S>, instance: Arc<Instance>) -> Self {
+impl<A: GPUComputableAutomaton> GPUSimulator<A> {
+    pub fn new(
+        name: &str,
+        mut automaton: A,
+        grid: &Grid<A::State>,
+        instance: Arc<Instance>,
+    ) -> Self {
         let vk = {
             // Select a queue family from the physical device
             let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
@@ -113,7 +114,7 @@ where
         raw_data
     }
 
-    fn raw_to_grid(&self, cpu_buffer: Arc<CpuAccessibleBuffer<[u32]>>) -> Vec<S> {
+    fn raw_to_grid(&self, cpu_buffer: Arc<CpuAccessibleBuffer<[u32]>>) -> Vec<A::State> {
         let dim = self.size();
         let size = dim.nb_elems();
         let raw_data = cpu_buffer.read().unwrap();
@@ -125,11 +126,7 @@ where
     }
 }
 
-impl<S, C> Simulator<S, C> for GPUSimulator<S, C>
-where
-    S: Copy + Default,
-    C: GPUCompute<S>,
-{
+impl<A: GPUComputableAutomaton> Simulator<A> for GPUSimulator<A> {
     fn run(&mut self, nb_gens: u64) -> () {
         for _i in 0..nb_gens {
             // Transform grid into raw data
@@ -185,11 +182,11 @@ where
         }
     }
 
-    fn automaton(&self) -> &C {
+    fn automaton(&self) -> &A {
         &self.automaton
     }
 
-    fn cell(&self, pos: &Position) -> &S {
+    fn cell(&self, pos: &Position) -> &A::State {
         self.grid.get(pos)
     }
 

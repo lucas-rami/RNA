@@ -2,19 +2,15 @@
 use super::grid::{Dimensions, Grid, Position};
 use super::{CellularAutomaton, Simulator};
 
-pub struct CPUSimulator<S: Copy + Default, C: CellularAutomaton<S>> {
+pub struct CPUSimulator<A: CellularAutomaton> {
     name: String,
-    automaton: C,
-    grid: Grid<S>,
+    automaton: A,
+    grid: Grid<A::State>,
     current_gen: u64,
 }
 
-impl<S, C> CPUSimulator<S, C>
-where
-    S: Copy + Default,
-    C: CellularAutomaton<S>,
-{
-    pub fn new(name: &str, automaton: C, grid: &Grid<S>) -> Self {
+impl<A: CellularAutomaton> CPUSimulator<A> {
+    pub fn new(name: &str, automaton: A, grid: &Grid<A::State>) -> Self {
         Self {
             name: String::from(name),
             automaton,
@@ -24,11 +20,7 @@ where
     }
 }
 
-impl<S, C> Simulator<S, C> for CPUSimulator<S, C>
-where
-    S: Copy + Default,
-    C: CellularAutomaton<S>,
-{
+impl<A: CellularAutomaton> Simulator<A> for CPUSimulator<A> {
     fn run(&mut self, nb_gens: u64) -> () {
         for _ in 0..nb_gens {
             let dim = self.grid.dim();
@@ -46,11 +38,11 @@ where
         self.current_gen += nb_gens
     }
 
-    fn automaton(&self) -> &C {
+    fn automaton(&self) -> &A {
         &self.automaton
     }
 
-    fn cell(&self, pos: &Position) -> &S {
+    fn cell(&self, pos: &Position) -> &A::State {
         self.grid.get(pos)
     }
 
