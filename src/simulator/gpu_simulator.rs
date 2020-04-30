@@ -15,7 +15,7 @@ use vulkano::sync::{self, GpuFuture};
 use super::grid::{Dimensions, Grid, Position};
 use super::{CellularAutomaton, Simulator};
 
-pub trait GPUCompute<S: Copy>: CellularAutomaton<S> {
+pub trait GPUCompute<S: Copy + Default>: CellularAutomaton<S> {
     fn id_from_state(&self, state: &S) -> u32;
     fn state_from_id(&self, id: u32) -> S;
 
@@ -28,7 +28,7 @@ pub trait GPUCompute<S: Copy>: CellularAutomaton<S> {
     ) -> AutoCommandBufferBuilder<T>;
 }
 
-pub struct GPUSimulator<S: Copy, C: GPUCompute<S>> {
+pub struct GPUSimulator<S: Copy + Default, C: GPUCompute<S>> {
     name: String,
     automaton: C,
     grid: Grid<S>,
@@ -38,7 +38,7 @@ pub struct GPUSimulator<S: Copy, C: GPUCompute<S>> {
 
 impl<S, C> GPUSimulator<S, C>
 where
-    S: Copy,
+    S: Copy + Default,
     C: GPUCompute<S>,
 {
     pub fn new(name: &str, mut automaton: C, grid: &Grid<S>, instance: Arc<Instance>) -> Self {
@@ -127,7 +127,7 @@ where
 
 impl<S, C> Simulator<S, C> for GPUSimulator<S, C>
 where
-    S: Copy,
+    S: Copy + Default,
     C: GPUCompute<S>,
 {
     fn run(&mut self, nb_gens: u64) -> () {

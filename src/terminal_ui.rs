@@ -21,11 +21,11 @@ use crate::simulator::{grid::Position, CellularAutomaton, Simulator};
 use module::Module;
 use styled_text::StyledText;
 
-pub trait TerminalAutomaton<S: Copy>: CellularAutomaton<S> {
+pub trait TerminalAutomaton<S: Copy + Default>: CellularAutomaton<S> {
     fn style(&self, state: &S) -> &StyledContent<char>;
 }
 
-pub struct TerminalUI<S: Copy, C: TerminalAutomaton<S>, Sim: Simulator<S, C>> {
+pub struct TerminalUI<S: Copy + Default, C: TerminalAutomaton<S>, Sim: Simulator<S, C>> {
     size: Size,
     auto_mod: Module,
     info_mod: Module,
@@ -35,7 +35,12 @@ pub struct TerminalUI<S: Copy, C: TerminalAutomaton<S>, Sim: Simulator<S, C>> {
     _marker: PhantomData<(S, C)>,
 }
 
-impl<S: Copy, C: TerminalAutomaton<S>, Sim: Simulator<S, C>> TerminalUI<S, C, Sim> {
+impl<S, C, Sim> TerminalUI<S, C, Sim>
+where
+    S: Copy + Default,
+    C: TerminalAutomaton<S>,
+    Sim: Simulator<S, C>,
+{
     pub fn new(simulator: Sim) -> Self {
         // Clear terminal
         queue!(stdout(), terminal::Clear(terminal::ClearType::All))

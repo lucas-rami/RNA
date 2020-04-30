@@ -12,11 +12,11 @@ pub struct Grid<T: Clone> {
 }
 
 impl<T: Clone> Grid<T> {
-    pub fn new(dim: Dimensions, default: &T) -> Self {
+    pub fn new(dim: Dimensions, default: T) -> Self {
         let data = vec![default.clone(); dim.nb_rows * dim.nb_cols];
         Self {
             dim,
-            default: default.clone(),
+            default,
             data,
         }
     }

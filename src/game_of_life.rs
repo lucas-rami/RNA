@@ -13,20 +13,14 @@ use vulkano::pipeline::ComputePipeline;
 
 // CELL
 use crate::simulator::grid::{Grid, GridView, Position, RelCoords};
-use crate::simulator::{grid::Dimensions, CellularAutomaton};
 use crate::simulator::GPUCompute;
+use crate::simulator::{grid::Dimensions, CellularAutomaton};
 use crate::terminal_ui::TerminalAutomaton;
 
 pub struct GameOfLife {
     name: &'static str,
     style_map: HashMap<States, StyledContent<char>>,
     vk: Option<VKResources>,
-}
-
-#[derive(Copy, Clone, Eq, PartialEq, std::hash::Hash)]
-pub enum States {
-    Dead,
-    Alive,
 }
 
 struct VKResources {
@@ -94,9 +88,6 @@ impl CellularAutomaton<States> for GameOfLife {
             }
         }
     }
-    fn default(&self) -> States {
-        States::Dead
-    }
 
     fn name(&self) -> &str {
         self.name
@@ -157,8 +148,21 @@ impl GPUCompute<States> for GameOfLife {
     }
 }
 
+#[derive(Copy, Clone, Eq, PartialEq, std::hash::Hash)]
+pub enum States {
+    Dead,
+    Alive,
+}
+
+impl Default for States {
+    fn default() -> Self {
+        Self::Dead
+    }
+}
+
+
 pub fn conway_canon() -> Grid<States> {
-    let mut grid = Grid::new(Dimensions::new(100, 200), &States::Dead);
+    let mut grid = Grid::new(Dimensions::new(100, 200), States::default());
     grid = cascade!(
         grid;
         ..set(&Position::new(1, 5), States::Alive);
