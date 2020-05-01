@@ -137,16 +137,23 @@ impl GPUComputableAutomaton for GameOfLife {
 
     fn gpu_dispatch<U>(
         &self,
-        dimensions: [u32; 3],
+        dispatch_dim: [u32; 3],
         cmd_buffer: AutoCommandBufferBuilder<U>,
         sets: impl DescriptorSetsCollection,
+        grid_dim: &Dimensions,
     ) -> AutoCommandBufferBuilder<U> {
+        // Push constant
+        let pc = shader::ty::Dim {
+            nb_rows: grid_dim.nb_rows as u32,
+            nb_cols: grid_dim.nb_cols as u32,
+        };
+
         let vk = self
             .vk
             .as_ref()
             .expect("Automaton hasn't been binded to Vulkan device.");
         cmd_buffer
-            .dispatch(dimensions, vk.pipeline.clone(), sets, ())
+            .dispatch(dispatch_dim, vk.pipeline.clone(), sets, pc)
             .unwrap()
     }
 }
@@ -210,6 +217,6 @@ pub fn conway_canon() -> Grid<States> {
 mod shader {
     vulkano_shaders::shader! {
         ty: "compute",
-        path: "game_of_life.comp"
+        path: "game_of_life.comp",
     }
 }

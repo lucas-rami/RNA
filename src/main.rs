@@ -21,7 +21,8 @@ fn main() -> () {
     let mut gpu_sim = GPUSimulator::new(
         "Conway GPU",
         GameOfLife::new(),
-        &simple_grid,
+        // &simple_grid,
+        &conway_canon(),
         instance,
     );
     // gpu_sim.run(1);
