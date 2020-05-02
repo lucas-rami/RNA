@@ -48,10 +48,6 @@ impl GameOfLife {
 impl CellularAutomaton for GameOfLife {
     type State = States;
 
-    fn all_states(&self) -> Vec<Self::State> {
-        vec![States::Dead, States::Alive]
-    }
-
     fn update_cpu<'a>(&self, grid: &GridView<'a, Self::State>) -> Self::State {
         // Count the number of alive cells around us
         let neighbors = vec![
@@ -114,7 +110,7 @@ impl GPUComputableAutomaton for GameOfLife {
         match id {
             0 => States::Dead,
             1 => States::Alive,
-            _ => panic!("Dummy dum dum"),
+            _ => panic!("Invalid grid state."),
         }
     }
 
@@ -170,6 +166,13 @@ impl Default for States {
     }
 }
 
+mod shader {
+    vulkano_shaders::shader! {
+        ty: "compute",
+        path: "game_of_life.comp",
+    }
+}
+
 pub fn conway_canon() -> Grid<States> {
     let mut grid = Grid::new(Dimensions::new(100, 200), States::default());
     grid = cascade!(
@@ -212,11 +215,4 @@ pub fn conway_canon() -> Grid<States> {
         ..set(&Position::new(36, 4), States::Alive);
     );
     grid
-}
-
-mod shader {
-    vulkano_shaders::shader! {
-        ty: "compute",
-        path: "game_of_life.comp",
-    }
 }

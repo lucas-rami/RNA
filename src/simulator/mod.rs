@@ -10,8 +10,6 @@ use grid::{grid_view::GridView, Dimensions, Position};
 pub trait CellularAutomaton {
     type State: Copy + Default;
     
-    fn all_states(&self) -> Vec<Self::State>;
-
     fn update_cpu<'a>(&self, grid: &GridView<'a, Self::State>) -> Self::State;
 
     fn name(&self) -> &str {

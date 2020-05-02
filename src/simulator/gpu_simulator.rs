@@ -26,7 +26,7 @@ pub trait GPUComputableAutomaton: CellularAutomaton {
         dispatch_dim: [u32; 3],
         cmd_buffer: AutoCommandBufferBuilder<T>,
         sets: impl DescriptorSetsCollection,
-        grid_dim: &Dimensions
+        grid_dim: &Dimensions,
     ) -> AutoCommandBufferBuilder<T>;
 }
 
@@ -166,7 +166,16 @@ impl<A: GPUComputableAutomaton> Simulator<A> for GPUSimulator<A> {
             .unwrap();
             let command_buffer = self
                 .automaton
-                .gpu_dispatch([self.grid.dim().nb_cols as u32, self.grid.dim().nb_rows as u32, 1], command_buffer, set, self.grid.dim())
+                .gpu_dispatch(
+                    [
+                        self.grid.dim().nb_cols as u32,
+                        self.grid.dim().nb_rows as u32,
+                        1,
+                    ],
+                    command_buffer,
+                    set,
+                    self.grid.dim(),
+                )
                 .copy_buffer(self.vk.dst_buf.clone(), cpu_buffer.clone())
                 .unwrap()
                 .build()
