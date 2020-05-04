@@ -133,8 +133,8 @@ impl GPUComputableAutomaton for GameOfLife {
 
     fn gpu_dispatch<U>(
         &self,
-        dispatch_dim: [u32; 3],
         cmd_buffer: AutoCommandBufferBuilder<U>,
+        dispatch_dim: [u32; 3],
         sets: impl DescriptorSetsCollection,
         grid_dim: &Dimensions,
     ) -> AutoCommandBufferBuilder<U> {
