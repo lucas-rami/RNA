@@ -1,5 +1,5 @@
 // Standard library
-use std::sync::{mpsc, Arc};
+use std::sync::Arc;
 
 // External libraries
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, DeviceLocalBuffer};
@@ -9,6 +9,7 @@ use vulkano::descriptor::descriptor_set::{
 };
 use vulkano::device::{Device, DeviceExtensions, Queue};
 use vulkano::instance::{Instance, PhysicalDevice};
+use vulkano::pipeline::ComputePipelineAbstract;
 use vulkano::sync::{self, GpuFuture};
 
 // CELL
@@ -16,18 +17,20 @@ use super::grid::{Dimensions, Grid, Position};
 use super::{CellularAutomaton, Simulator};
 
 pub trait GPUComputableAutomaton: CellularAutomaton {
+    type Pipeline: ComputePipelineAbstract + Send + Sync + 'static;
+
     fn id_from_state(&self, state: &Self::State) -> u32;
     fn state_from_id(&self, id: u32) -> Self::State;
+    fn vk_setup(&mut self, device: &Arc<Device>) -> PipelineInfo<Self::Pipeline>;
+}
 
-    fn bind_device(&mut self, device: &Arc<Device>) -> ();
-    fn gpu_layout(&self) -> &Arc<UnsafeDescriptorSetLayout>;
-    fn gpu_dispatch<T>(
-        &self,
-        cmd_buffer: AutoCommandBufferBuilder<T>,
-        dispatch_dim: [u32; 3],
-        sets: impl DescriptorSetsCollection,
-        grid_dim: &Dimensions,
-    ) -> AutoCommandBufferBuilder<T>;
+#[derive(Clone)]
+pub struct PipelineInfo<P>
+where
+    P: ComputePipelineAbstract + Send + Sync + 'static,
+{
+    pub layout: Arc<UnsafeDescriptorSetLayout>,
+    pub pipeline: Arc<P>,
 }
 
 pub struct GPUSimulator<A: GPUComputableAutomaton> {
@@ -35,7 +38,7 @@ pub struct GPUSimulator<A: GPUComputableAutomaton> {
     automaton: A,
     grid: Grid<A::State>,
     current_gen: u64,
-    manager: ComputeManager,
+    manager: ComputeManager<A::Pipeline>,
 }
 
 impl<A: GPUComputableAutomaton> GPUSimulator<A> {
@@ -66,10 +69,9 @@ impl<A: GPUComputableAutomaton> GPUSimulator<A> {
             .unwrap();
             let queue = queues.next().unwrap();
 
-            // Bind the automaton to the device
-            automaton.bind_device(&device);
-
-            ComputeManager::new(device.clone(), queue, 4, &automaton, grid.dim())
+            // Get pipeline information from automaton and create compute manager
+            let pipe_info = automaton.vk_setup(&device);
+            ComputeManager::new(device, queue, pipe_info, 4, grid.dim())
         };
 
         Self {
@@ -130,21 +132,22 @@ impl<A: GPUComputableAutomaton> Simulator<A> for GPUSimulator<A> {
     }
 }
 
-struct ComputeManager {
+struct ComputeManager<P: ComputePipelineAbstract + Send + Sync + 'static> {
     device: Arc<Device>,
     queue: Arc<Queue>,
+    pipe_info: PipelineInfo<P>,
     gpu_bufs: Vec<Arc<DeviceLocalBuffer<[u32]>>>,
     comp_units: Vec<ComputeUnit>,
     next_exec: usize,
-    next_copy: usize, 
+    next_copy: usize,
 }
 
-impl ComputeManager {
+impl<P: ComputePipelineAbstract + Send + Sync + 'static> ComputeManager<P> {
     fn new(
         device: Arc<Device>,
         queue: Arc<Queue>,
+        pipe_info: PipelineInfo<P>,
         nb_comp_units: usize,
-        automaton: &(impl CellularAutomaton + GPUComputableAutomaton),
         size: &Dimensions,
     ) -> Self {
         let total_size = size.nb_elems();
@@ -168,11 +171,11 @@ impl ComputeManager {
                 }
             };
             comp_units.push(ComputeUnit::new(
-                device.clone(),
+                Arc::clone(&device),
                 Arc::clone(&queue),
+                &pipe_info,
                 Arc::clone(&gpu_bufs[i]),
                 Arc::clone(&gpu_bufs[j]),
-                automaton,
                 size,
             ))
         }
@@ -180,15 +183,12 @@ impl ComputeManager {
         Self {
             device,
             queue,
+            pipe_info,
             gpu_bufs,
             comp_units,
             next_exec: 0,
             next_copy: 0,
         }
-    }
-
-    fn run(&self, nb_gens: u64) -> () {
-
     }
 }
 
@@ -196,19 +196,18 @@ struct ComputeUnit {
     device: Arc<Device>,
     queue: Arc<Queue>,
     cpu_out: Arc<CpuAccessibleBuffer<[u32]>>,
-    cmd_exec: AutoCommandBuffer,
-    cmd_copy: AutoCommandBuffer,
+    cmd: AutoCommandBuffer,
 }
 
 impl ComputeUnit {
-    fn new(
+    fn new<T>(
         device: Arc<Device>,
         queue: Arc<Queue>,
+        pipe_info: &PipelineInfo<T>,
         gpu_src: Arc<DeviceLocalBuffer<[u32]>>,
         gpu_dst: Arc<DeviceLocalBuffer<[u32]>>,
-        automaton: &(impl CellularAutomaton + GPUComputableAutomaton),
         size: &Dimensions,
-    ) -> Self {
+    ) -> Self where T: ComputePipelineAbstract + Send + Sync + 'static, {
         let cpu_out = unsafe {
             CpuAccessibleBuffer::uninitialized_array(
                 device.clone(),
@@ -220,7 +219,7 @@ impl ComputeUnit {
         };
 
         let set = Arc::new(
-            PersistentDescriptorSet::start(automaton.gpu_layout().clone())
+            PersistentDescriptorSet::start(pipe_info.layout.clone())
                 .add_buffer(gpu_src.clone())
                 .unwrap()
                 .add_buffer(gpu_dst.clone())
@@ -228,18 +227,8 @@ impl ComputeUnit {
                 .build()
                 .unwrap(),
         );
-        let cmd_exec = AutoCommandBufferBuilder::primary(device.clone(), queue.family()).unwrap();
-        let cmd_exec = automaton
-            .gpu_dispatch(
-                cmd_exec,
-                [size.nb_cols as u32, size.nb_rows as u32, 1],
-                set,
-                &size,
-            )
-            .build()
-            .unwrap();
-
-        let cmd_copy = AutoCommandBufferBuilder::primary(device.clone(), queue.family())
+        let cmd = AutoCommandBufferBuilder::primary(device.clone(), queue.family()).unwrap()
+            .dispatch([size.nb_cols as u32, size.nb_rows as u32, 1], pipe_info.pipeline.clone(), set, ())
             .unwrap()
             .copy_buffer(gpu_dst.clone(), cpu_out.clone())
             .unwrap()
@@ -250,26 +239,16 @@ impl ComputeUnit {
             device,
             queue,
             cpu_out,
-            cmd_exec,
-            cmd_copy,
+            cmd,
         }
     }
 
     fn exec(&self) -> () {
-        self.submit_and_wait(self.cmd_exec);
-    }
-
-    fn copy(&self) -> &Arc<CpuAccessibleBuffer<[u32]>> {
-        self.submit_and_wait(self.cmd_copy);
-        &self.cpu_out
-    }
-
-    fn submit_and_wait(&self, cmd: AutoCommandBuffer) -> () {
-        let future = sync::now(self.device.clone())
-            .then_execute(self.queue.clone(), cmd)
-            .unwrap()
-            .then_signal_fence_and_flush()
-            .unwrap();
-        future.wait(None).unwrap();
+        // let future = sync::now(self.device.clone())
+        //     .then_execute(self.queue.clone(), submit_cmd)
+        //     .unwrap()
+        //     .then_signal_fence_and_flush()
+        //     .unwrap();
+        // future.wait(None).unwrap();
     }
 }

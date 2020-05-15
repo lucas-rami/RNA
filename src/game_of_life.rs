@@ -5,27 +5,19 @@ use std::sync::Arc;
 // External libraries
 use cascade::cascade;
 use crossterm::style::{style, Attribute, Color, StyledContent};
-use vulkano::command_buffer::AutoCommandBufferBuilder;
-use vulkano::descriptor::descriptor_set::{DescriptorSetsCollection, UnsafeDescriptorSetLayout};
 use vulkano::descriptor::pipeline_layout::{PipelineLayout, PipelineLayoutAbstract};
 use vulkano::device::Device;
 use vulkano::pipeline::ComputePipeline;
 
 // CELL
+use crate::simulator::gpu_simulator::{GPUComputableAutomaton, PipelineInfo};
 use crate::simulator::grid::{Grid, GridView, Position, RelCoords};
-use crate::simulator::GPUComputableAutomaton;
 use crate::simulator::{grid::Dimensions, CellularAutomaton};
 use crate::terminal_ui::TermDrawableAutomaton;
 
 pub struct GameOfLife {
     name: &'static str,
     style_map: HashMap<States, StyledContent<char>>,
-    vk: Option<VKResources>,
-}
-
-struct VKResources {
-    pipeline: Arc<ComputePipeline<PipelineLayout<shader::Layout>>>,
-    layout: Arc<UnsafeDescriptorSetLayout>,
 }
 
 impl GameOfLife {
@@ -40,7 +32,6 @@ impl GameOfLife {
         Self {
             name: "Conway's Game of Life",
             style_map,
-            vk: None,
         }
     }
 }
@@ -99,6 +90,8 @@ impl TermDrawableAutomaton for GameOfLife {
 }
 
 impl GPUComputableAutomaton for GameOfLife {
+    type Pipeline = ComputePipeline<PipelineLayout<shader::Layout>>;
+
     fn id_from_state(&self, state: &States) -> u32 {
         match state {
             States::Dead => 0,
@@ -114,44 +107,38 @@ impl GPUComputableAutomaton for GameOfLife {
         }
     }
 
-    fn bind_device(&mut self, device: &Arc<Device>) -> () {
+    fn vk_setup(&mut self, device: &Arc<Device>) -> PipelineInfo<Self::Pipeline> {
         let shader = shader::Shader::load(device.clone()).unwrap();
-        let pipeline = Arc::new(
-            ComputePipeline::new(device.clone(), &shader.main_entry_point(), &()).unwrap(),
-        );
+        let pipeline =
+            ComputePipeline::new(device.clone(), &shader.main_entry_point(), &()).unwrap();
         let layout = pipeline.layout().descriptor_set_layout(0).unwrap().clone();
-        self.vk = Some(VKResources { pipeline, layout });
+        PipelineInfo {
+            layout,
+            pipeline: Arc::new(pipeline),
+        }
     }
 
-    fn gpu_layout(&self) -> &Arc<UnsafeDescriptorSetLayout> {
-        let vk = self
-            .vk
-            .as_ref()
-            .expect("Automaton hasn't been binded to Vulkan device.");
-        &vk.layout
-    }
+    // fn gpu_dispatch<U>(
+    //     &self,
+    //     cmd_buffer: AutoCommandBufferBuilder<U>,
+    //     dispatch_dim: [u32; 3],
+    //     sets: impl DescriptorSetsCollection,
+    //     grid_dim: &Dimensions,
+    // ) -> AutoCommandBufferBuilder<U> {
+    //     // Push constant
+    //     let pc = shader::ty::Dim {
+    //         nb_rows: grid_dim.nb_rows as u32,
+    //         nb_cols: grid_dim.nb_cols as u32,
+    //     };
 
-    fn gpu_dispatch<U>(
-        &self,
-        cmd_buffer: AutoCommandBufferBuilder<U>,
-        dispatch_dim: [u32; 3],
-        sets: impl DescriptorSetsCollection,
-        grid_dim: &Dimensions,
-    ) -> AutoCommandBufferBuilder<U> {
-        // Push constant
-        let pc = shader::ty::Dim {
-            nb_rows: grid_dim.nb_rows as u32,
-            nb_cols: grid_dim.nb_cols as u32,
-        };
-
-        let vk = self
-            .vk
-            .as_ref()
-            .expect("Automaton hasn't been binded to Vulkan device.");
-        cmd_buffer
-            .dispatch(dispatch_dim, vk.pipeline.clone(), sets, pc)
-            .unwrap()
-    }
+    //     let vk = self
+    //         .vk
+    //         .as_ref()
+    //         .expect("Automaton hasn't been binded to Vulkan device.");
+    //     cmd_buffer
+    //         .dispatch(dispatch_dim, vk.pipeline.clone(), sets, pc)
+    //         .unwrap()
+    // }
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, std::hash::Hash)]
