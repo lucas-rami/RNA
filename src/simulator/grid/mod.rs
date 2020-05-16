@@ -3,22 +3,23 @@ pub mod grid_view;
 
 pub use grid_view::GridView;
 
-
 #[derive(Clone)]
-pub struct Grid<T: Clone> {
+pub struct Grid<T: Clone + Default> {
     dim: Dimensions,
-    default: T,
     data: Vec<T>,
 }
 
-impl<T: Clone> Grid<T> {
-    pub fn new(dim: Dimensions, default: T) -> Self {
-        let data = vec![default.clone(); dim.nb_rows * dim.nb_cols];
-        Self {
-            dim,
-            default,
-            data,
+impl<T: Clone + Default> Grid<T> {
+    pub fn new(dim: Dimensions) -> Self {
+        let data = vec![T::default(); dim.nb_rows * dim.nb_cols];
+        Self { dim, data }
+    }
+
+    pub fn from_data(dim: Dimensions, data: Vec<T>) -> Self {
+        if data.len() != dim.nb_elems() {
+            panic!("Vector length does not correspond to dimensions.")
         }
+        Self { dim, data }
     }
 
     pub fn get(&self, pos: &Position) -> &T {
@@ -58,7 +59,6 @@ impl<T: Clone> Grid<T> {
         pos.row < self.dim.nb_rows && pos.col < self.dim.nb_cols
     }
 }
-
 
 #[derive(Clone)]
 pub struct Position {

@@ -10,7 +10,7 @@ use vulkano::device::Device;
 use vulkano::pipeline::ComputePipeline;
 
 // CELL
-use crate::simulator::gpu_simulator::{GPUComputableAutomaton, PipelineInfo};
+use crate::simulator::gpu::{GPUComputableAutomaton, PipelineInfo};
 use crate::simulator::grid::{Grid, GridView, Position, RelCoords};
 use crate::simulator::{grid::Dimensions, CellularAutomaton};
 use crate::terminal_ui::TermDrawableAutomaton;
@@ -91,6 +91,7 @@ impl TermDrawableAutomaton for GameOfLife {
 
 impl GPUComputableAutomaton for GameOfLife {
     type Pipeline = ComputePipeline<PipelineLayout<shader::Layout>>;
+    type PushConstants = shader::ty::Dim;
 
     fn id_from_state(&self, state: &States) -> u32 {
         match state {
@@ -107,7 +108,7 @@ impl GPUComputableAutomaton for GameOfLife {
         }
     }
 
-    fn vk_setup(&mut self, device: &Arc<Device>) -> PipelineInfo<Self::Pipeline> {
+    fn vk_setup(&self, device: &Arc<Device>) -> PipelineInfo<Self::Pipeline> {
         let shader = shader::Shader::load(device.clone()).unwrap();
         let pipeline =
             ComputePipeline::new(device.clone(), &shader.main_entry_point(), &()).unwrap();
@@ -118,27 +119,13 @@ impl GPUComputableAutomaton for GameOfLife {
         }
     }
 
-    // fn gpu_dispatch<U>(
-    //     &self,
-    //     cmd_buffer: AutoCommandBufferBuilder<U>,
-    //     dispatch_dim: [u32; 3],
-    //     sets: impl DescriptorSetsCollection,
-    //     grid_dim: &Dimensions,
-    // ) -> AutoCommandBufferBuilder<U> {
-    //     // Push constant
-    //     let pc = shader::ty::Dim {
-    //         nb_rows: grid_dim.nb_rows as u32,
-    //         nb_cols: grid_dim.nb_cols as u32,
-    //     };
-
-    //     let vk = self
-    //         .vk
-    //         .as_ref()
-    //         .expect("Automaton hasn't been binded to Vulkan device.");
-    //     cmd_buffer
-    //         .dispatch(dispatch_dim, vk.pipeline.clone(), sets, pc)
-    //         .unwrap()
-    // }
+    fn push_constants(&self, grid: &Grid<Self::State>) -> Self::PushConstants {
+        let dim = grid.dim();
+        shader::ty::Dim {
+            nb_rows: dim.nb_rows as u32,
+            nb_cols: dim.nb_cols as u32,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, std::hash::Hash)]
@@ -161,7 +148,7 @@ mod shader {
 }
 
 pub fn conway_canon() -> Grid<States> {
-    let mut grid = Grid::new(Dimensions::new(100, 200), States::default());
+    let mut grid = Grid::new(Dimensions::new(100, 200));
     grid = cascade!(
         grid;
         ..set(&Position::new(1, 5), States::Alive);

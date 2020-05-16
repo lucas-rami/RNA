@@ -7,7 +7,7 @@ mod game_of_life;
 mod simulator;
 mod terminal_ui;
 use game_of_life::{conway_canon, GameOfLife};
-use simulator::GPUSimulator;
+use simulator::gpu::GPUSimulator;
 use terminal_ui::TerminalUI;
 
 fn main() -> () {

@@ -1,14 +1,15 @@
 // CELL
 use super::{Grid, Position, RelCoords};
 
-pub struct GridView<'a, T: Clone> {
+pub struct GridView<'a, T: Clone + Default> {
     pos: Position,
     grid: &'a Grid<T>,
+    default: T,
 }
 
-impl<'a, T: Clone> GridView<'a, T> {
+impl<'a, T: Clone + Default> GridView<'a, T> {
     pub fn new(grid: &'a Grid<T>, pos: Position) -> Self {
-        Self { pos, grid }
+        Self { pos, grid, default: T::default() }
     }
 
     pub fn state(&self) -> &'a T {
@@ -44,9 +45,9 @@ impl<'a, T: Clone> GridView<'a, T> {
         match row {
             Some(row_idx) => match col {
                 Some(col_idx) => &self.grid.data[row_idx * self.grid.dim.nb_cols + col_idx],
-                None => &self.grid.default,
+                None => &self.default,
             },
-            None => &self.grid.default,
+            None => &self.default,
         }
     }
 
