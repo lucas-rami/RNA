@@ -1,4 +1,12 @@
+// Standard library
+use std::sync::Arc;
+
+// External library
+use vulkano::buffer::CpuAccessibleBuffer;
+
+// CELL
 use super::{Dimensions, GridView, Position};
+use crate::simulator::Transcoder;
 
 #[derive(Clone)]
 pub struct Grid<T: Copy + Default> {
@@ -12,7 +20,7 @@ impl<T: Copy + Default> Grid<T> {
         Self { dim, data }
     }
 
-    pub fn from_data(dim: Dimensions, data: Vec<T>) -> Self {
+    pub fn from_data(data: Vec<T>, dim: Dimensions) -> Self {
         if data.len() != dim.size() as usize {
             panic!("Vector length does not correspond to dimensions.")
         }
@@ -54,6 +62,26 @@ impl<T: Copy + Default> Grid<T> {
 
     fn pos_within_bounds(&self, pos: Position) -> bool {
         pos.y() < self.dim.height() && pos.x() < self.dim.width()
+    }
+}
+
+impl<T: Copy + Default + Transcoder> Grid<T> {
+    pub fn encode(&self) -> Vec<u32> {
+        let mut encoded = Vec::with_capacity(self.dim.size() as usize);
+        for state in self.iter() {
+            encoded.push(state.encode());
+        }
+        encoded
+    }
+
+    pub fn decode(encoded: Arc<CpuAccessibleBuffer<[u32]>>, dim: &Dimensions) -> Grid<T> {
+        let size = dim.size() as usize;
+        let raw_data = encoded.read().unwrap();
+        let mut decoded = Vec::with_capacity(size);
+        for idx in 0..size {
+            decoded.push(T::decode(raw_data[idx]));
+        }
+        Grid::from_data(decoded, *dim)
     }
 }
 

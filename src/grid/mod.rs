@@ -1,7 +1,9 @@
 // CELL
 pub mod grid;
+pub mod grid_history;
 pub mod grid_view;
 pub use grid::Grid;
+pub use grid_history::GridHistory;
 pub use grid_view::GridView;
 
 #[derive(Copy, Clone)]
@@ -61,7 +63,6 @@ impl Dimensions {
         (pos.y() as usize) * (self.width as usize) + (pos.x() as usize)
     }
 }
-
 
 impl From<(u32, u32)> for Dimensions {
     fn from(dim: (u32, u32)) -> Self {

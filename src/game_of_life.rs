@@ -11,9 +11,10 @@ use vulkano::pipeline::ComputePipeline;
 
 // CELL
 use crate::grid::{Dimensions, Grid, GridView, Position, RelCoords};
-use crate::simulator::gpu::{GPUComputableAutomaton, PipelineInfo};
-use crate::simulator::CellularAutomaton;
-use crate::terminal_ui::TermDrawableAutomaton;
+use crate::simulator::{
+    CPUComputableAutomaton, CellularAutomaton, GPUComputableAutomaton, PipelineInfo, Transcoder,
+};
+// use crate::terminal_ui::TermDrawableAutomaton;
 
 pub struct GameOfLife {
     name: &'static str,
@@ -30,7 +31,7 @@ impl GameOfLife {
         );
 
         Self {
-            name: "Conway's Game of Life",
+            name: "Conway's Game of pLife",
             style_map,
         }
     }
@@ -39,6 +40,12 @@ impl GameOfLife {
 impl CellularAutomaton for GameOfLife {
     type State = States;
 
+    fn name(&self) -> &str {
+        self.name
+    }
+}
+
+impl CPUComputableAutomaton for GameOfLife {
     fn update_cpu<'a>(&self, grid: &GridView<'a, Self::State>) -> Self::State {
         // Count the number of alive cells around us
         let neighbors = vec![
@@ -77,36 +84,28 @@ impl CellularAutomaton for GameOfLife {
             }
         }
     }
-
-    fn name(&self) -> &str {
-        self.name
-    }
 }
 
-impl TermDrawableAutomaton for GameOfLife {
-    fn style(&self, state: &States) -> &StyledContent<char> {
-        &self.style_map.get(state).unwrap()
+impl Transcoder for States {
+    fn encode(&self) -> u32 {
+        match self {
+            States::Dead => 0,
+            States::Alive => 1,
+        }
+    }
+
+    fn decode(id: u32) -> Self {
+        match id {
+            0 => States::Dead,
+            1 => States::Alive,
+            _ => panic!(format!("Decoding failed: unkwnon encoding {}.", id)),
+        }
     }
 }
 
 impl GPUComputableAutomaton for GameOfLife {
     type Pipeline = ComputePipeline<PipelineLayout<shader::Layout>>;
     type PushConstants = shader::ty::Dim;
-
-    fn id_from_state(&self, state: &States) -> u32 {
-        match state {
-            States::Dead => 0,
-            States::Alive => 1,
-        }
-    }
-
-    fn state_from_id(&self, id: u32) -> States {
-        match id {
-            0 => States::Dead,
-            1 => States::Alive,
-            _ => panic!("Invalid grid state."),
-        }
-    }
 
     fn vk_setup(&self, device: &Arc<Device>) -> PipelineInfo<Self::Pipeline> {
         let shader = shader::Shader::load(device.clone()).unwrap();
@@ -127,6 +126,12 @@ impl GPUComputableAutomaton for GameOfLife {
         }
     }
 }
+
+// impl TermDrawableAutomaton for GameOfLife {
+//     fn style(&self, state: &Self::State) -> &StyledContent<char> {
+//         &self.style_map.get(state).unwrap()
+//     }
+// }
 
 #[derive(Copy, Clone, Eq, PartialEq, std::hash::Hash)]
 pub enum States {
