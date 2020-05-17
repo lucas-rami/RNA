@@ -15,9 +15,9 @@ use crossterm::{
 // CELL
 mod module;
 mod styled_text;
-
 use crate::commands::Command;
-use crate::simulator::{grid::Position, CellularAutomaton, Simulator};
+use crate::grid::Position;
+use crate::simulator::{CellularAutomaton, Simulator};
 use module::Module;
 use styled_text::StyledText;
 
@@ -29,14 +29,13 @@ pub struct TerminalUI<A: TermDrawableAutomaton, S: Simulator<A>> {
     size: Size,
     auto_mod: Module,
     info_mod: Module,
-    view: (usize, usize),
+    view: (u32, u32),
     commands: Vec<Command>,
     simulator: S,
     _marker: PhantomData<A>,
 }
 
-impl<A: TermDrawableAutomaton, S: Simulator<A>> TerminalUI<A, S>
-{
+impl<A: TermDrawableAutomaton, S: Simulator<A>> TerminalUI<A, S> {
     pub fn new(simulator: S) -> Self {
         // Clear terminal
         queue!(stdout(), terminal::Clear(terminal::ClearType::All))
@@ -232,8 +231,8 @@ impl<A: TermDrawableAutomaton, S: Simulator<A>> TerminalUI<A, S>
                         VIEW => {
                             let x_arg = *mapping.get("x").unwrap();
                             let y_arg = *mapping.get("y").unwrap();
-                            if let Ok(x) = x_arg.parse::<usize>() {
-                                if let Ok(y) = y_arg.parse::<usize>() {
+                            if let Ok(x) = x_arg.parse::<u32>() {
+                                if let Ok(y) = y_arg.parse::<u32>() {
                                     self.move_view(x, y);
                                 } else {
                                     // Print error on terminal here
@@ -280,9 +279,9 @@ impl<A: TermDrawableAutomaton, S: Simulator<A>> TerminalUI<A, S>
         self.flush();
     }
 
-    fn move_view(&mut self, x: usize, y: usize) -> () {
+    fn move_view(&mut self, x: u32, y: u32) -> () {
         let dim = self.simulator.size();
-        if x < dim.nb_cols && y < dim.nb_rows {
+        if x < dim.width() && y < dim.height() {
             self.view.0 = x;
             self.view.1 = y;
             self.draw_automaton();
@@ -292,11 +291,11 @@ impl<A: TermDrawableAutomaton, S: Simulator<A>> TerminalUI<A, S>
     fn draw_automaton(&self) -> () {
         // Get maximum render size and convert to (usize, usize)
         let max_render_size = self.auto_mod.get_render_size();
-        let max_render_size = (max_render_size.0 as usize, max_render_size.1 as usize);
+        let max_render_size = (max_render_size.0 as u32, max_render_size.1 as u32);
 
         // Determine real render size
         let dim = self.simulator.size();
-        let mut render_size = (dim.nb_cols - self.view.0, dim.nb_rows - self.view.1);
+        let mut render_size = (dim.width() - self.view.0, dim.height() - self.view.1);
         if render_size.0 > max_render_size.0 {
             render_size.0 = max_render_size.0;
         }
@@ -317,8 +316,8 @@ impl<A: TermDrawableAutomaton, S: Simulator<A>> TerminalUI<A, S>
             )
             .expect("Failed to move cursor.");
             for x in 0..render_size.0 {
-                let state = self.simulator.cell(&Position::new(self.view.0 + x, row));
-                let c = self.simulator.automaton().style(state);
+                let state = self.simulator.cell(Position::new(self.view.0 + x, row));
+                let c = self.simulator.automaton().style(&state);
                 queue!(stdout, PrintStyledContent(c.clone())).expect("Failed to display simulator");
             }
             // Next row
@@ -338,8 +337,8 @@ impl<A: TermDrawableAutomaton, S: Simulator<A>> TerminalUI<A, S>
             style(String::from(" Total size: ")).attribute(Attribute::Italic),
             style(format!(
                 "({}, {})",
-                auto_size.nb_cols.to_string(),
-                auto_size.nb_rows.to_string()
+                auto_size.width().to_string(),
+                auto_size.height().to_string()
             )),
         ]);
         let view = StyledText::from(vec![

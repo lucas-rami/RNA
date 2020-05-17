@@ -1,6 +1,6 @@
 // CELL
-use super::grid::{Dimensions, Grid, Position};
 use super::{CellularAutomaton, Simulator};
+use crate::grid::{Dimensions, Grid, Position};
 
 pub struct CPUSimulator<A: CellularAutomaton> {
     name: String,
@@ -24,9 +24,9 @@ impl<A: CellularAutomaton> Simulator<A> for CPUSimulator<A> {
     fn run(&mut self, nb_gens: u64) -> () {
         for _ in 0..nb_gens {
             let dim = self.grid.dim();
-            let mut new_data = Vec::with_capacity(dim.nb_elems());
-            for row in 0..dim.nb_rows {
-                for col in 0..dim.nb_cols {
+            let mut new_data = Vec::with_capacity(dim.size() as usize);
+            for row in 0..dim.height() {
+                for col in 0..dim.width() {
                     let pos = Position::new(col, row);
                     let view = self.grid.view(pos.clone());
                     let new_state = self.automaton.update_cpu(&view);
@@ -42,7 +42,7 @@ impl<A: CellularAutomaton> Simulator<A> for CPUSimulator<A> {
         &self.automaton
     }
 
-    fn cell(&self, pos: &Position) -> &A::State {
+    fn cell(&self, pos: Position) -> A::State {
         self.grid.get(pos)
     }
 

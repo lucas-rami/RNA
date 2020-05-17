@@ -10,9 +10,9 @@ use vulkano::device::Device;
 use vulkano::pipeline::ComputePipeline;
 
 // CELL
+use crate::grid::{Dimensions, Grid, GridView, Position, RelCoords};
 use crate::simulator::gpu::{GPUComputableAutomaton, PipelineInfo};
-use crate::simulator::grid::{Grid, GridView, Position, RelCoords};
-use crate::simulator::{grid::Dimensions, CellularAutomaton};
+use crate::simulator::CellularAutomaton;
 use crate::terminal_ui::TermDrawableAutomaton;
 
 pub struct GameOfLife {
@@ -122,8 +122,8 @@ impl GPUComputableAutomaton for GameOfLife {
     fn push_constants(&self, grid: &Grid<Self::State>) -> Self::PushConstants {
         let dim = grid.dim();
         shader::ty::Dim {
-            nb_rows: dim.nb_rows as u32,
-            nb_cols: dim.nb_cols as u32,
+            nb_rows: dim.height() as u32,
+            nb_cols: dim.width() as u32,
         }
     }
 }
@@ -148,45 +148,45 @@ mod shader {
 }
 
 pub fn conway_canon() -> Grid<States> {
-    let mut grid = Grid::new(Dimensions::new(100, 200));
+    let mut grid = Grid::new(Dimensions::new(200, 100));
     grid = cascade!(
         grid;
-        ..set(&Position::new(1, 5), States::Alive);
-        ..set(&Position::new(1, 6), States::Alive);
-        ..set(&Position::new(2, 5), States::Alive);
-        ..set(&Position::new(2, 6), States::Alive);
-        ..set(&Position::new(11, 5), States::Alive);
-        ..set(&Position::new(11, 6), States::Alive);
-        ..set(&Position::new(11, 7), States::Alive);
-        ..set(&Position::new(12, 4), States::Alive);
-        ..set(&Position::new(12, 8), States::Alive);
-        ..set(&Position::new(13, 3), States::Alive);
-        ..set(&Position::new(13, 9), States::Alive);
-        ..set(&Position::new(14, 3), States::Alive);
-        ..set(&Position::new(14, 9), States::Alive);
-        ..set(&Position::new(15, 6), States::Alive);
-        ..set(&Position::new(16, 4), States::Alive);
-        ..set(&Position::new(16, 8), States::Alive);
-        ..set(&Position::new(17, 5), States::Alive);
-        ..set(&Position::new(17, 6), States::Alive);
-        ..set(&Position::new(17, 7), States::Alive);
-        ..set(&Position::new(18, 6), States::Alive);
-        ..set(&Position::new(21, 3), States::Alive);
-        ..set(&Position::new(21, 4), States::Alive);
-        ..set(&Position::new(21, 5), States::Alive);
-        ..set(&Position::new(22, 3), States::Alive);
-        ..set(&Position::new(22, 4), States::Alive);
-        ..set(&Position::new(22, 5), States::Alive);
-        ..set(&Position::new(23, 2), States::Alive);
-        ..set(&Position::new(23, 6), States::Alive);
-        ..set(&Position::new(25, 1), States::Alive);
-        ..set(&Position::new(25, 2), States::Alive);
-        ..set(&Position::new(25, 6), States::Alive);
-        ..set(&Position::new(25, 7), States::Alive);
-        ..set(&Position::new(35, 3), States::Alive);
-        ..set(&Position::new(35, 4), States::Alive);
-        ..set(&Position::new(36, 3), States::Alive);
-        ..set(&Position::new(36, 4), States::Alive);
+        ..set(Position::new(1, 5), States::Alive);
+        ..set(Position::new(1, 6), States::Alive);
+        ..set(Position::new(2, 5), States::Alive);
+        ..set(Position::new(2, 6), States::Alive);
+        ..set(Position::new(11, 5), States::Alive);
+        ..set(Position::new(11, 6), States::Alive);
+        ..set(Position::new(11, 7), States::Alive);
+        ..set(Position::new(12, 4), States::Alive);
+        ..set(Position::new(12, 8), States::Alive);
+        ..set(Position::new(13, 3), States::Alive);
+        ..set(Position::new(13, 9), States::Alive);
+        ..set(Position::new(14, 3), States::Alive);
+        ..set(Position::new(14, 9), States::Alive);
+        ..set(Position::new(15, 6), States::Alive);
+        ..set(Position::new(16, 4), States::Alive);
+        ..set(Position::new(16, 8), States::Alive);
+        ..set(Position::new(17, 5), States::Alive);
+        ..set(Position::new(17, 6), States::Alive);
+        ..set(Position::new(17, 7), States::Alive);
+        ..set(Position::new(18, 6), States::Alive);
+        ..set(Position::new(21, 3), States::Alive);
+        ..set(Position::new(21, 4), States::Alive);
+        ..set(Position::new(21, 5), States::Alive);
+        ..set(Position::new(22, 3), States::Alive);
+        ..set(Position::new(22, 4), States::Alive);
+        ..set(Position::new(22, 5), States::Alive);
+        ..set(Position::new(23, 2), States::Alive);
+        ..set(Position::new(23, 6), States::Alive);
+        ..set(Position::new(25, 1), States::Alive);
+        ..set(Position::new(25, 2), States::Alive);
+        ..set(Position::new(25, 6), States::Alive);
+        ..set(Position::new(25, 7), States::Alive);
+        ..set(Position::new(35, 3), States::Alive);
+        ..set(Position::new(35, 4), States::Alive);
+        ..set(Position::new(36, 3), States::Alive);
+        ..set(Position::new(36, 4), States::Alive);
     );
     grid
 }

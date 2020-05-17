@@ -12,8 +12,8 @@ use vulkano::pipeline::ComputePipelineAbstract;
 use vulkano::sync::{self, GpuFuture, NowFuture};
 
 // CELL
-use super::super::grid::Dimensions;
 use super::{ComputeOP, PipelineInfo};
+use crate::grid::Dimensions;
 
 pub struct ComputeCluster<P: ComputePipelineAbstract + Send + Sync + 'static> {
     device: Arc<Device>,
@@ -33,19 +33,19 @@ impl<P: ComputePipelineAbstract + Send + Sync + 'static> ComputeCluster<P> {
         pipe_info: PipelineInfo<P>,
         push_constants: C,
         nb_nodes: usize,
-        size: &Dimensions,
+        dim: &Dimensions,
     ) -> Self {
         if nb_nodes == 0 {
             panic!("The number of compute nodes must be strictly positive.")
         }
 
-        let total_size = size.nb_elems();
+        let total_size = dim.size() as usize;
 
         let mut gpu_bufs = Vec::with_capacity(nb_nodes);
         for _ in 0..nb_nodes {
             let q_family = vec![queue.family()];
             gpu_bufs.push(
-                DeviceLocalBuffer::array(device.clone(), total_size, BufferUsage::all(), q_family)
+                DeviceLocalBuffer::array(device.clone(), total_size , BufferUsage::all(), q_family)
                     .unwrap(),
             )
         }
@@ -66,7 +66,7 @@ impl<P: ComputePipelineAbstract + Send + Sync + 'static> ComputeCluster<P> {
                 Arc::clone(&gpu_bufs[i]),
                 Arc::clone(&gpu_bufs[j]),
                 push_constants,
-                size,
+                dim,
             ))
         }
 
@@ -138,7 +138,6 @@ impl<P: ComputePipelineAbstract + Send + Sync + 'static> ComputeCluster<P> {
         let mut gens_to_compute = nb_gens;
 
         while gens_to_compute > 0 {
-            
             // Returns the number of compute nodes available
             let check_available_ressources = || {
                 if !self.pending_cpy {
@@ -208,12 +207,12 @@ impl ComputeNode {
         gpu_src: Arc<DeviceLocalBuffer<[u32]>>,
         gpu_dst: Arc<DeviceLocalBuffer<[u32]>>,
         push_constants: C,
-        size: &Dimensions,
+        dim: &Dimensions,
     ) -> Self {
         let cpu_out = unsafe {
             CpuAccessibleBuffer::uninitialized_array(
                 device.clone(),
-                size.nb_elems(),
+                dim.size() as usize,
                 BufferUsage::all(),
                 true,
             )
@@ -234,7 +233,7 @@ impl ComputeNode {
             AutoCommandBufferBuilder::primary(device.clone(), queue.family())
                 .unwrap()
                 .dispatch(
-                    [size.nb_cols as u32, size.nb_rows as u32, 1],
+                    [dim.width(), dim.height(), 1],
                     pipe_info.pipeline.clone(),
                     set.clone(),
                     push_constants,

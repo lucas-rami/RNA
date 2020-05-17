@@ -11,8 +11,8 @@ use vulkano::pipeline::ComputePipelineAbstract;
 
 // CELL
 mod compute;
-use super::grid::{Dimensions, Grid, Position};
 use super::{CellularAutomaton, Simulator};
+use crate::grid::{Dimensions, Grid, Position};
 use compute::ComputeCluster;
 
 pub trait GPUComputableAutomaton: CellularAutomaton {
@@ -95,8 +95,8 @@ impl<A: GPUComputableAutomaton> GPUSimulator<A> {
 
     fn grid_to_raw(&self, idx: usize) -> Vec<u32> {
         let dim = self.size();
-        let size = dim.nb_elems();
-        let mut raw_data = Vec::with_capacity(size);
+        let size = dim.size();
+        let mut raw_data = Vec::with_capacity(size as usize);
         for state in self.grid[idx].iter() {
             raw_data.push(self.automaton.id_from_state(state));
         }
@@ -105,7 +105,7 @@ impl<A: GPUComputableAutomaton> GPUSimulator<A> {
 
     fn raw_to_grid(&self, cpu_buf: Arc<CpuAccessibleBuffer<[u32]>>) -> Grid<A::State> {
         let dim = self.size();
-        let size = dim.nb_elems();
+        let size = dim.size() as usize;
         let raw_data = cpu_buf.read().unwrap();
         let mut data = Vec::with_capacity(size);
         for i in 0..size {
@@ -133,7 +133,7 @@ impl<A: GPUComputableAutomaton> Simulator<A> for GPUSimulator<A> {
         &self.automaton
     }
 
-    fn cell(&self, pos: &Position) -> &A::State {
+    fn cell(&self, pos: Position) -> A::State {
         self.grid[self.grid.len() - 1].get(pos)
     }
 
