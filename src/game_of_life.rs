@@ -10,7 +10,7 @@ use vulkano::device::Device;
 use vulkano::pipeline::ComputePipeline;
 
 // CELL
-use crate::grid::{Dimensions, Grid, GridView, Position, RelCoords};
+use crate::grid::{Dimensions, Grid, GridView, Position, RelCoords, MOORE_NEIGHBORHOOD};
 use crate::simulator::{
     CPUComputableAutomaton, CellularAutomaton, GPUComputableAutomaton, PipelineInfo, Transcoder,
 };
@@ -48,23 +48,16 @@ impl CellularAutomaton for GameOfLife {
 impl CPUComputableAutomaton for GameOfLife {
     fn update_cpu<'a>(&self, grid: &GridView<'a, Self::State>) -> Self::State {
         // Count the number of alive cells around us
-        let neighbors = vec![
-            RelCoords::new(-1, -1),
-            RelCoords::new(-1, 0),
-            RelCoords::new(-1, 1),
-            RelCoords::new(0, 1),
-            RelCoords::new(1, 1),
-            RelCoords::new(1, 0),
-            RelCoords::new(1, -1),
-            RelCoords::new(0, -1),
-        ];
-        let nb_alive_neighbors = grid.get_multiple(neighbors).iter().fold(0, |cnt, cell| {
-            if let States::Alive = cell {
-                cnt + 1
-            } else {
-                cnt
-            }
-        });
+        let nb_alive_neighbors =
+            grid.get_multiple(&MOORE_NEIGHBORHOOD)
+                .iter()
+                .fold(0, |cnt, cell| {
+                    if let States::Alive = cell {
+                        cnt + 1
+                    } else {
+                        cnt
+                    }
+                });
 
         // Apply the evolution rule
         match grid.state() {

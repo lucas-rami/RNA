@@ -20,7 +20,7 @@ impl<'a, T: Copy + Default> GridView<'a, T> {
         self.grid.get(self.pos)
     }
 
-    pub fn get(&self, coords: RelCoords) -> T {
+    pub fn get(&self, coords: &RelCoords) -> T {
         let row = {
             if coords.y() < 0 && (coords.y().abs() as u32) <= self.pos.y() {
                 Some(self.pos.y() - (coords.y().abs() as u32))
@@ -55,7 +55,7 @@ impl<'a, T: Copy + Default> GridView<'a, T> {
         }
     }
 
-    pub fn get_multiple(&self, mul_coords: Vec<RelCoords>) -> Vec<T> {
-        mul_coords.into_iter().map(|x| self.get(x)).collect()
+    pub fn get_multiple(&self, mul_coords: &[RelCoords]) -> Vec<T> {
+        mul_coords.iter().map(|x| self.get(x)).collect()
     }
 }
