@@ -18,7 +18,7 @@ use compute::ComputeCluster;
 // ############# Traits and associated structs #############
 
 pub trait CellularAutomaton {
-    type State: Copy + Default;
+    type State: Copy + Default + Eq + PartialEq;
 
     fn name(&self) -> &str {
         "Cellular Automaton"
@@ -97,10 +97,7 @@ impl<A: CellularAutomaton> Simulator<A> {
         // }
     }
 
-    
-    fn run_gpu(&mut self, nb_gens: u64) {
-
-    }
+    fn run_gpu(&mut self, nb_gens: u64) {}
 }
 
 impl<A: CPUComputableAutomaton> Simulator<A> {

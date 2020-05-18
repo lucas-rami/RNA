@@ -1,3 +1,6 @@
+// Standard library
+use std::hash::Hash;
+
 // CELL
 pub mod grid;
 pub mod grid_history;
@@ -6,7 +9,7 @@ pub use grid::Grid;
 pub use grid_history::GridHistory;
 pub use grid_view::GridView;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Position {
     x: u32,
     y: u32,
@@ -33,7 +36,7 @@ impl From<(u32, u32)> for Position {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub struct Dimensions {
     width: u32,
     height: u32,

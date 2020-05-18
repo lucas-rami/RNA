@@ -56,10 +56,6 @@ impl<T: Copy + Default> Grid<T> {
         self.data.iter()
     }
 
-    pub fn switch_data(&mut self, new_data: Vec<T>) -> () {
-        self.data = new_data
-    }
-
     fn pos_within_bounds(&self, pos: Position) -> bool {
         pos.y() < self.dim.height() && pos.x() < self.dim.width()
     }
