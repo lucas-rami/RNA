@@ -1,13 +1,13 @@
 // CELL
 use super::{Grid, Position, RelCoords};
 
-pub struct GridView<'a, T: Copy + Default> {
+pub struct GridView<'a, T: Copy + Default + Eq + PartialEq> {
     pos: Position,
     grid: &'a Grid<T>,
     default: T,
 }
 
-impl<'a, T: Copy + Default> GridView<'a, T> {
+impl<'a, T: Copy + Default + Eq + PartialEq> GridView<'a, T> {
     pub fn new(grid: &'a Grid<T>, pos: Position) -> Self {
         Self {
             pos,

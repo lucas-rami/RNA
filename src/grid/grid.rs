@@ -5,16 +5,16 @@ use std::sync::Arc;
 use vulkano::buffer::CpuAccessibleBuffer;
 
 // CELL
-use super::{Dimensions, GridView, Position};
+use super::{Dimensions, GridDiff, GridView, Position};
 use crate::simulator::Transcoder;
 
 #[derive(Clone)]
-pub struct Grid<T: Copy + Default> {
+pub struct Grid<T: Copy + Default + Eq + PartialEq> {
     dim: Dimensions,
     data: Vec<T>,
 }
 
-impl<T: Copy + Default> Grid<T> {
+impl<T: Copy + Default + Eq + PartialEq> Grid<T> {
     pub fn new(dim: Dimensions) -> Self {
         let data = vec![T::default(); dim.size() as usize];
         Self { dim, data }
@@ -56,12 +56,18 @@ impl<T: Copy + Default> Grid<T> {
         self.data.iter()
     }
 
+    pub fn apply_diffs(&mut self, diffs: GridDiff<T>) {
+        for (pos, new_cell) in diffs.iter() {
+            self.set(*pos, *new_cell);
+        }
+    }
+
     fn pos_within_bounds(&self, pos: Position) -> bool {
         pos.y() < self.dim.height() && pos.x() < self.dim.width()
     }
 }
 
-impl<T: Copy + Default + Transcoder> Grid<T> {
+impl<T: Copy + Default + Eq + PartialEq + Transcoder> Grid<T> {
     pub fn encode(&self) -> Vec<u32> {
         let mut encoded = Vec::with_capacity(self.dim.size() as usize);
         for state in self.iter() {

@@ -6,7 +6,7 @@ pub mod grid;
 pub mod grid_history;
 pub mod grid_view;
 pub use grid::Grid;
-pub use grid_history::GridHistory;
+pub use grid_history::{GridDiff, GridHistory};
 pub use grid_view::GridView;
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
