@@ -1,5 +1,6 @@
 // Standard library
 use std::collections::HashMap;
+use std::sync::mpsc::{Receiver, Sender};
 
 // CELL
 use super::{Grid, Position};
@@ -7,31 +8,30 @@ use super::{Grid, Position};
 pub struct GridHistory<T: Copy + Default + Eq + PartialEq> {
     diffs: Vec<GridDiff<T>>,
     checkpoints: Vec<Grid<T>>,
-    f_check: u64,
+    f_check: usize,
     last: Grid<T>,
 }
 
 impl<T: Copy + Default + Eq + PartialEq> GridHistory<T> {
-    pub fn new(initial_grid: Grid<T>, f_check: u64) -> Self {
+    pub fn new(initial_grid: &Grid<T>, f_check: usize) -> Self {
         Self {
             diffs: vec![],
             checkpoints: vec![initial_grid.clone()],
             f_check,
-            last: initial_grid,
+            last: initial_grid.clone(),
         }
     }
 
     pub fn push(&mut self, grid: Grid<T>) {
         self.diffs.push(GridDiff::new(&self.last, &grid));
-        if self.f_check != 0 && self.diffs.len() as u64 % self.f_check == 0 {
+        if self.f_check != 0 && self.diffs.len() % self.f_check == 0 {
             self.checkpoints.push(grid.clone());
         }
         self.last = grid;
     }
 
-    pub fn gen(&self, gen: u64) -> Option<Grid<T>> {
-        let max_gen = self.diffs.len() as u64;
-        if max_gen as u64 + 1 < gen {
+    pub fn get_gen(&self, gen: usize) -> Option<Grid<T>> {
+        if self.len() < gen {
             // We don't have that generation
             None
         } else {
@@ -41,9 +41,7 @@ impl<T: Copy + Default + Eq + PartialEq> GridHistory<T> {
                 let shift = gen % self.f_check;
 
                 // Accumulate differences between reference grid and target generation
-                let low_idx = (gen - shift) as usize;
-                let high_idx = gen as usize;
-                let stacked_diffs = GridDiff::stack(&self.diffs[low_idx..high_idx]);
+                let stacked_diffs = GridDiff::stack(&self.diffs[(gen - shift)..gen]);
 
                 // Apply modifications on reference grid
                 let mut grid = self.checkpoints[idx as usize].clone();
@@ -51,10 +49,52 @@ impl<T: Copy + Default + Eq + PartialEq> GridHistory<T> {
                 Some(grid)
             } else {
                 // Accumulate differences between initial grid and target generation
-                let stacked_diffs = GridDiff::stack(&self.diffs[0..(gen as usize)]);
+                let stacked_diffs = GridDiff::stack(&self.diffs[0..gen]);
                 let mut grid = self.checkpoints[0].clone();
                 grid.apply_diffs(stacked_diffs);
                 Some(grid)
+            }
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.diffs.len() + 1
+    }
+
+    pub fn dispatch(mut self, rx_op: Receiver<GridHistoryOP<T>>, tx_data: Sender<Option<Grid<T>>>) {
+        let mut registered = None;
+
+        loop {
+            match rx_op.recv() {
+                Ok(op) => match op {
+                    GridHistoryOP::Push(grid) => {
+                        self.push(grid);
+                        if let Some(gen) = registered {
+                            if let Some(tx_grid) = self.get_gen(gen) {
+                                if let Err(_) = tx_data.send(Some(tx_grid)) {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    GridHistoryOP::GetGen { gen, blocking } => match self.get_gen(gen) {
+                        Some(grid) => {
+                            if let Err(_) = tx_data.send(Some(grid)) {
+                                break;
+                            }
+                        }
+                        None => {
+                            if blocking {
+                                registered = Some(gen);
+                            } else {
+                                if let Err(_) = tx_data.send(None) {
+                                    break;
+                                }
+                            }
+                        }
+                    },
+                },
+                Err(_) => break, // All senders died, time to die
             }
         }
     }
@@ -127,4 +167,9 @@ impl<T: Copy + Default + Eq + PartialEq> Default for GridDiff<T> {
             diffs: HashMap::new(),
         }
     }
+}
+
+pub enum GridHistoryOP<T: Copy + Default + Eq + PartialEq> {
+    Push(Grid<T>),
+    GetGen { gen: usize, blocking: bool },
 }

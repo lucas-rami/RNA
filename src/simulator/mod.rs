@@ -1,6 +1,9 @@
 // Standard library
 use std::hash::Hash;
-use std::sync::{mpsc, Arc};
+use std::sync::{
+    mpsc::{self, Receiver, Sender},
+    Arc,
+};
 use std::thread;
 
 // External libraries
@@ -12,13 +15,13 @@ use vulkano::pipeline::ComputePipelineAbstract;
 
 // CELL
 mod compute;
-use crate::grid::{Dimensions, Grid, GridHistory, GridView, Position};
-use compute::ComputeCluster;
+use crate::grid::{Dimensions, Grid, GridHistory, GridHistoryOP, GridView, Position};
+use compute::{CPUCompute, ComputeCluster};
 
-// ############# Traits and associated structs #############
+// ############# Traits and associated structs ############# 
 
-pub trait CellularAutomaton {
-    type State: Copy + Default + Eq + PartialEq;
+pub trait CellularAutomaton: 'static {
+    type State: Copy + Default + Eq + PartialEq + Send;
 
     fn name(&self) -> &str {
         "Cellular Automaton"
@@ -26,7 +29,7 @@ pub trait CellularAutomaton {
 }
 
 pub trait CPUComputableAutomaton: CellularAutomaton {
-    fn update_cpu<'a>(&self, grid: &GridView<'a, Self::State>) -> Self::State;
+    fn update_cpu<'a>(grid: &GridView<'a, Self::State>) -> Self::State;
 }
 
 pub trait GPUComputableAutomaton: CellularAutomaton
@@ -60,8 +63,9 @@ pub struct Simulator<A: CellularAutomaton> {
     name: String,
     automaton: A,
     grid: Grid<A::State>,
-    current_gen: u64,
-    use_gpu: bool,
+    tx_comp_op: Sender<ComputeOP<A>>,
+    tx_grid_op: Sender<GridHistoryOP<A::State>>,
+    rx_data: Receiver<Option<Grid<A::State>>>,
 }
 
 impl<A: CellularAutomaton> Simulator<A> {
@@ -73,41 +77,31 @@ impl<A: CellularAutomaton> Simulator<A> {
         &self.automaton
     }
 
-    pub fn run(&mut self, nb_gens: u64) {
-        if self.use_gpu {
-            self.run_gpu(nb_gens)
-        } else {
-            self.run_cpu(nb_gens)
-        }
-    }
-
-    fn run_cpu(&mut self, nb_gens: u64) {
-        // for _ in 0..nb_gens {
-        //     let dim = self.grid.dim();
-        //     let mut new_data = Vec::with_capacity(dim.size() as usize);
-        //     for row in 0..dim.height() {
-        //         for col in 0..dim.width() {
-        //             let pos = Position::new(col, row);
-        //             let view = self.grid.view(pos.clone());
-        //             let new_state = self.automaton.update_cpu(&view);
-        //             new_data.push(new_state);
-        //         }
-        //     }
-        //     self.grid.switch_data(new_data);
-        // }
-    }
-
-    fn run_gpu(&mut self, nb_gens: u64) {}
+    pub fn run(&mut self, nb_gens: usize) {}
 }
 
 impl<A: CPUComputableAutomaton> Simulator<A> {
     pub fn new(name: &str, automaton: A, grid: Grid<A::State>) -> Self {
+        // Create communication channels
+        let (tx_comp_op, rx_comp_op) = mpsc::channel();
+        let (tx_grid_op, rx_grid_op) = mpsc::channel();
+        let (tx_data, rx_data) = mpsc::channel();
+
+        // Dispatch a CPUCompute thread and GridHistory thread
+        let compute = CPUCompute::new();
+        let history = GridHistory::new(&grid, 10);
+        let tx_grid_op_compute = tx_grid_op.clone();
+        thread::spawn(move || compute.dispatch(rx_comp_op, tx_grid_op_compute));
+        thread::spawn(move || history.dispatch(rx_grid_op, tx_data));
+
+        // Create the simulator
         Self {
             name: String::from(name),
             automaton,
-            grid: grid.clone(),
-            current_gen: 0,
-            use_gpu: false,
+            grid,
+            tx_comp_op,
+            tx_grid_op,
+            rx_data,
         }
     }
 }
@@ -191,9 +185,9 @@ impl<A: CPUComputableAutomaton> Simulator<A> {
 //     }
 // }
 
-pub enum ComputeOP {
-    Run(u64),
-    Reset(Vec<u32>),
+pub enum ComputeOP<A: CellularAutomaton> {
+    Reset(Grid<A::State>),
+    Run(usize),
 }
 
-// const ERR_DEAD_CLUSTER: &str = "The compute cluster died.";
+const ERR_DEAD_CLUSTER: &str = "The compute cluster died.";

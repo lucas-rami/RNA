@@ -46,7 +46,7 @@ impl CellularAutomaton for GameOfLife {
 }
 
 impl CPUComputableAutomaton for GameOfLife {
-    fn update_cpu<'a>(&self, grid: &GridView<'a, Self::State>) -> Self::State {
+    fn update_cpu<'a>(grid: &GridView<'a, Self::State>) -> Self::State {
         // Count the number of alive cells around us
         let nb_alive_neighbors =
             grid.get_multiple(&MOORE_NEIGHBORHOOD)

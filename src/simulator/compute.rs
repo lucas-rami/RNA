@@ -1,5 +1,8 @@
 // Standard library
-use std::sync::{mpsc, Arc};
+use std::sync::{
+    mpsc::{Receiver, Sender},
+    Arc,
+};
 
 // External libraries
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, DeviceLocalBuffer};
@@ -12,8 +15,8 @@ use vulkano::pipeline::ComputePipelineAbstract;
 use vulkano::sync::{self, GpuFuture, NowFuture};
 
 // CELL
-use super::{ComputeOP, PipelineInfo};
-use crate::grid::Dimensions;
+use super::{CPUComputableAutomaton, ComputeOP, GPUComputableAutomaton, PipelineInfo, Transcoder};
+use crate::grid::{Dimensions, Grid, GridHistoryOP, PositionIterator};
 
 pub struct ComputeCluster<P: ComputePipelineAbstract + Send + Sync + 'static> {
     device: Arc<Device>,
@@ -45,7 +48,7 @@ impl<P: ComputePipelineAbstract + Send + Sync + 'static> ComputeCluster<P> {
         for _ in 0..nb_nodes {
             let q_family = vec![queue.family()];
             gpu_bufs.push(
-                DeviceLocalBuffer::array(device.clone(), total_size , BufferUsage::all(), q_family)
+                DeviceLocalBuffer::array(device.clone(), total_size, BufferUsage::all(), q_family)
                     .unwrap(),
             )
         }
@@ -82,20 +85,14 @@ impl<P: ComputePipelineAbstract + Send + Sync + 'static> ComputeCluster<P> {
         }
     }
 
-    pub fn dispatch(
+    pub fn dispatch<A: GPUComputableAutomaton>(
         mut self,
-        rx_op: mpsc::Receiver<ComputeOP>,
-        tx_data: mpsc::Sender<Vec<Arc<CpuAccessibleBuffer<[u32]>>>>,
-    ) {
-        loop {
-            match rx_op.recv() {
-                Ok(op) => match op {
-                    ComputeOP::Reset(data) => self.reset(data),
-                    ComputeOP::Run(nb_gens) => self.run(nb_gens, &tx_data),
-                },
-                Err(_) => break, // Time to die
-            }
-        }
+        rx_op: Receiver<ComputeOP<A>>,
+        tx_data: Sender<Vec<Arc<CpuAccessibleBuffer<[u32]>>>>,
+    ) where
+        A::State: Transcoder,
+    {
+        
     }
 
     fn reset(&mut self, data: Vec<u32>) {
@@ -130,7 +127,7 @@ impl<P: ComputePipelineAbstract + Send + Sync + 'static> ComputeCluster<P> {
             .unwrap();
     }
 
-    fn run(&mut self, nb_gens: u64, tx_data: &mpsc::Sender<Vec<Arc<CpuAccessibleBuffer<[u32]>>>>) {
+    fn run(&mut self, nb_gens: usize, tx_data: &Sender<Vec<Arc<CpuAccessibleBuffer<[u32]>>>>) {
         // Total number of compute nodes
         let nb_nodes = self.nodes.len();
 
@@ -157,8 +154,8 @@ impl<P: ComputePipelineAbstract + Send + Sync + 'static> ComputeCluster<P> {
 
             // We have some computing nodes available, launch computations on those
             let launch_cnt = {
-                if (nb_available as u64) < gens_to_compute {
-                    nb_available as u64
+                if nb_available < gens_to_compute {
+                    nb_available
                 } else {
                     gens_to_compute
                 }
@@ -271,5 +268,46 @@ impl ComputeNode {
         sync::now(self.device.clone())
             .then_execute(self.queue.clone(), self.cmd_cpy.clone())
             .unwrap()
+    }
+}
+
+pub struct CPUCompute<A: CPUComputableAutomaton> {
+    grid: Option<Grid<A::State>>,
+}
+
+impl<A: CPUComputableAutomaton> CPUCompute<A> {
+    pub fn new() -> Self {
+        Self { grid: None }
+    }
+
+    pub fn dispatch(
+        mut self,
+        rx_op: Receiver<ComputeOP<A>>,
+        tx_data: Sender<GridHistoryOP<A::State>>,
+    ) {
+        loop {
+            match rx_op.recv() {
+                Ok(op) => match op {
+                    ComputeOP::Reset(grid) => self.grid = Some(grid),
+                    ComputeOP::Run(nb_gens) => {}
+                },
+                Err(_) => break, // Sender died, time to die
+            }
+        }
+    }
+
+    fn run(&mut self) {
+        match &self.grid {
+            Some(grid) => {
+                let dim = grid.dim();
+                let mut new_data = Vec::with_capacity(dim.size() as usize);
+                for pos in PositionIterator::new(*dim) {
+                    let new_cell = A::update_cpu(&grid.view(pos));
+                    new_data.push(new_cell);
+                }
+                self.grid = Some(Grid::from_data(new_data, *dim));
+            }
+            None => panic!("A \"ComputeOP::Reset\" operation needs to happen before any \"ComputeOP::Run\" operation.")
+        }
     }
 }

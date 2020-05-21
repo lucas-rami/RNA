@@ -5,7 +5,7 @@ use std::sync::Arc;
 use vulkano::buffer::CpuAccessibleBuffer;
 
 // CELL
-use super::{Dimensions, GridDiff, GridView, Position};
+use super::{Dimensions, GridDiff, GridView, Position, PositionIterator};
 use crate::simulator::Transcoder;
 
 #[derive(Clone)]
@@ -52,7 +52,7 @@ impl<T: Copy + Default + Eq + PartialEq> Grid<T> {
         &self.dim
     }
 
-    pub fn iter<'a>(&'a self) -> std::slice::Iter<'a, T> {
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &T> {
         self.data.iter()
     }
 

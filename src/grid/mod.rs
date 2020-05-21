@@ -6,7 +6,7 @@ pub mod grid;
 pub mod grid_history;
 pub mod grid_view;
 pub use grid::Grid;
-pub use grid_history::{GridDiff, GridHistory};
+pub use grid_history::{GridDiff, GridHistory, GridHistoryOP};
 pub use grid_view::GridView;
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
@@ -27,6 +27,38 @@ impl Position {
     #[inline]
     pub fn y(&self) -> u32 {
         self.y
+    }
+}
+
+pub struct PositionIterator {
+    dim: Dimensions,
+    x: u32,
+    y: u32,
+}
+
+impl PositionIterator {
+    pub fn new(dim: Dimensions) -> Self {
+        Self { dim, x: 0, y: 0 }
+    }
+}
+
+impl Iterator for PositionIterator {
+    type Item = Position;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.y == self.dim.height() {
+            None
+        } else {
+            let ret = Position::new(self.x, self.y);
+            // Update position
+            if self.x == self.dim.width() - 1 {
+                self.x = 0;
+                self.y += 1;
+            } else {
+                self.x += 1;
+            }
+            Some(ret)
+        }
     }
 }
 
