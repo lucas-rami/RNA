@@ -100,7 +100,7 @@ impl<T: Copy + Default + Eq + PartialEq> GridHistory<T> {
     }
 }
 
-pub struct GridDiff<T: Copy + Default + Eq + PartialEq> {
+pub struct GridDiff<T: Copy + Default + PartialEq> {
     diffs: HashMap<Position, T>,
 }
 

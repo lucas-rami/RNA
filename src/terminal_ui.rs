@@ -22,7 +22,7 @@ use module::Module;
 use styled_text::StyledText;
 
 pub trait TermDrawableAutomaton: CellularAutomaton {
-    fn style(&self, state: &Self::State) -> &StyledContent<char>;
+    fn style(&self, state: &Self::Cell) -> &StyledContent<char>;
 }
 
 pub struct TerminalUI<A: TermDrawableAutomaton, S: Simulator<A>> {

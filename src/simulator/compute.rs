@@ -90,7 +90,7 @@ impl<P: ComputePipelineAbstract + Send + Sync + 'static> ComputeCluster<P> {
         rx_op: Receiver<ComputeOP<A>>,
         tx_data: Sender<Vec<Arc<CpuAccessibleBuffer<[u32]>>>>,
     ) where
-        A::State: Transcoder,
+        A::Cell: Transcoder,
     {
         
     }
@@ -272,7 +272,7 @@ impl ComputeNode {
 }
 
 pub struct CPUCompute<A: CPUComputableAutomaton> {
-    grid: Option<Grid<A::State>>,
+    grid: Option<Grid<A::Cell>>,
 }
 
 impl<A: CPUComputableAutomaton> CPUCompute<A> {
@@ -283,7 +283,7 @@ impl<A: CPUComputableAutomaton> CPUCompute<A> {
     pub fn dispatch(
         mut self,
         rx_op: Receiver<ComputeOP<A>>,
-        tx_data: Sender<GridHistoryOP<A::State>>,
+        tx_data: Sender<GridHistoryOP<A::Cell>>,
     ) {
         loop {
             match rx_op.recv() {

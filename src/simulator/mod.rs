@@ -20,8 +20,10 @@ use compute::{CPUCompute, ComputeCluster};
 
 // ############# Traits and associated structs ############# 
 
+pub trait CellType: Copy + Default + Eq + PartialEq + Send {}
+
 pub trait CellularAutomaton: 'static {
-    type State: Copy + Default + Eq + PartialEq + Send;
+    type Cell: CellType;
 
     fn name(&self) -> &str {
         "Cellular Automaton"
@@ -29,18 +31,18 @@ pub trait CellularAutomaton: 'static {
 }
 
 pub trait CPUComputableAutomaton: CellularAutomaton {
-    fn update_cpu<'a>(grid: &GridView<'a, Self::State>) -> Self::State;
+    fn update_cpu<'a>(grid: &GridView<'a, Self::Cell>) -> Self::Cell;
 }
 
 pub trait GPUComputableAutomaton: CellularAutomaton
 where
-    Self::State: Transcoder,
+    Self::Cell: Transcoder,
 {
     type Pipeline: ComputePipelineAbstract + Send + Sync + 'static;
     type PushConstants: Copy;
 
     fn vk_setup(&self, device: &Arc<Device>) -> PipelineInfo<Self::Pipeline>;
-    fn push_constants(&self, grid: &Grid<Self::State>) -> Self::PushConstants;
+    fn push_constants(&self, grid: &Grid<Self::Cell>) -> Self::PushConstants;
 }
 
 pub trait Transcoder {
@@ -62,10 +64,10 @@ where
 pub struct Simulator<A: CellularAutomaton> {
     name: String,
     automaton: A,
-    grid: Grid<A::State>,
+    grid: Grid<A::Cell>,
     tx_comp_op: Sender<ComputeOP<A>>,
-    tx_grid_op: Sender<GridHistoryOP<A::State>>,
-    rx_data: Receiver<Option<Grid<A::State>>>,
+    tx_grid_op: Sender<GridHistoryOP<A::Cell>>,
+    rx_data: Receiver<Option<Grid<A::Cell>>>,
 }
 
 impl<A: CellularAutomaton> Simulator<A> {
@@ -81,7 +83,7 @@ impl<A: CellularAutomaton> Simulator<A> {
 }
 
 impl<A: CPUComputableAutomaton> Simulator<A> {
-    pub fn new(name: &str, automaton: A, grid: Grid<A::State>) -> Self {
+    pub fn new(name: &str, automaton: A, grid: Grid<A::Cell>) -> Self {
         // Create communication channels
         let (tx_comp_op, rx_comp_op) = mpsc::channel();
         let (tx_grid_op, rx_grid_op) = mpsc::channel();
@@ -108,20 +110,20 @@ impl<A: CPUComputableAutomaton> Simulator<A> {
 
 // pub struct GPUSimulator<A: GPUComputableAutomaton>
 // where
-//     A::State: PartialEq + Eq + Hash,
+//     A::Cell: PartialEq + Eq + Hash,
 // {
 //     name: String,
 //     automaton: A,
-//     grid: Vec<Grid<A::State>>,
+//     grid: Vec<Grid<A::Cell>>,
 //     tx_op: mpsc::Sender<ComputeOP>,
 //     rx_data: mpsc::Receiver<Vec<Arc<CpuAccessibleBuffer<[u32]>>>>,
 // }
 
 // impl<A: GPUComputableAutomaton> GPUSimulator<A>
 // where
-//     A::State: PartialEq + Eq + Hash,
+//     A::Cell: PartialEq + Eq + Hash,
 // {
-//     pub fn new(name: &str, automaton: A, grid: Grid<A::State>, instance: Arc<Instance>) -> Self {
+//     pub fn new(name: &str, automaton: A, grid: Grid<A::Cell>, instance: Arc<Instance>) -> Self {
 //         // Create cluster
 //         let cluster = {
 //             // Select a queue family from the physical device
@@ -186,7 +188,7 @@ impl<A: CPUComputableAutomaton> Simulator<A> {
 // }
 
 pub enum ComputeOP<A: CellularAutomaton> {
-    Reset(Grid<A::State>),
+    Reset(Grid<A::Cell>),
     Run(usize),
 }
 

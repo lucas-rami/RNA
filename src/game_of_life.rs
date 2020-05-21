@@ -12,9 +12,24 @@ use vulkano::pipeline::ComputePipeline;
 // CELL
 use crate::grid::{Dimensions, Grid, GridView, Position, RelCoords, MOORE_NEIGHBORHOOD};
 use crate::simulator::{
-    CPUComputableAutomaton, CellularAutomaton, GPUComputableAutomaton, PipelineInfo, Transcoder,
+    CPUComputableAutomaton, CellType, CellularAutomaton, GPUComputableAutomaton, PipelineInfo,
+    Transcoder,
 };
 // use crate::terminal_ui::TermDrawableAutomaton;
+
+#[derive(Copy, Clone, Eq, PartialEq, std::hash::Hash)]
+pub enum States {
+    Dead,
+    Alive,
+}
+
+impl Default for States {
+    fn default() -> Self {
+        Self::Dead
+    }
+}
+
+impl CellType for States {}
 
 pub struct GameOfLife {
     name: &'static str,
@@ -38,7 +53,7 @@ impl GameOfLife {
 }
 
 impl CellularAutomaton for GameOfLife {
-    type State = States;
+    type Cell = States;
 
     fn name(&self) -> &str {
         self.name
@@ -46,10 +61,10 @@ impl CellularAutomaton for GameOfLife {
 }
 
 impl CPUComputableAutomaton for GameOfLife {
-    fn update_cpu<'a>(grid: &GridView<'a, Self::State>) -> Self::State {
+    fn update_cpu<'a>(grid: &GridView<'a, Self::Cell>) -> Self::Cell {
         // Count the number of alive cells around us
         let nb_alive_neighbors =
-            grid.get_multiple(&MOORE_NEIGHBORHOOD)
+            grid.get_relative_mul(&MOORE_NEIGHBORHOOD)
                 .iter()
                 .fold(0, |cnt, cell| {
                     if let States::Alive = cell {
@@ -60,7 +75,7 @@ impl CPUComputableAutomaton for GameOfLife {
                 });
 
         // Apply the evolution rule
-        match grid.state() {
+        match grid.cell() {
             States::Dead => {
                 if nb_alive_neighbors == 3 {
                     States::Alive
@@ -111,7 +126,7 @@ impl GPUComputableAutomaton for GameOfLife {
         }
     }
 
-    fn push_constants(&self, grid: &Grid<Self::State>) -> Self::PushConstants {
+    fn push_constants(&self, grid: &Grid<Self::Cell>) -> Self::PushConstants {
         let dim = grid.dim();
         shader::ty::Dim {
             nb_rows: dim.height() as u32,
@@ -121,22 +136,10 @@ impl GPUComputableAutomaton for GameOfLife {
 }
 
 // impl TermDrawableAutomaton for GameOfLife {
-//     fn style(&self, state: &Self::State) -> &StyledContent<char> {
+//     fn style(&self, state: &Self::Cell) -> &StyledContent<char> {
 //         &self.style_map.get(state).unwrap()
 //     }
 // }
-
-#[derive(Copy, Clone, Eq, PartialEq, std::hash::Hash)]
-pub enum States {
-    Dead,
-    Alive,
-}
-
-impl Default for States {
-    fn default() -> Self {
-        Self::Dead
-    }
-}
 
 mod shader {
     vulkano_shaders::shader! {
