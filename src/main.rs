@@ -13,7 +13,7 @@ use simulator::Simulator;
 
 fn main() -> () {
     let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
-    let sim = Simulator::new("Conway GPU", GameOfLife::new(), conway_canon());
+    let sim = Simulator::new_cpu_sim("Conway GPU", GameOfLife::new(), &conway_canon());
     // let mut term_ui = TerminalUI::new(sim);
     // term_ui.cmd_interpreter().unwrap();
 }

@@ -18,7 +18,7 @@ use vulkano::sync::{self, GpuFuture, NowFuture};
 use super::{CPUComputableAutomaton, ComputeOP, GPUComputableAutomaton, PipelineInfo, Transcoder};
 use crate::grid::{Dimensions, Grid, GridHistoryOP, PositionIterator};
 
-pub struct ComputeCluster<P: ComputePipelineAbstract + Send + Sync + 'static> {
+pub struct GPUCompute<P: ComputePipelineAbstract + Send + Sync + 'static> {
     device: Arc<Device>,
     queue: Arc<Queue>,
     pipe_info: PipelineInfo<P>,
@@ -29,7 +29,7 @@ pub struct ComputeCluster<P: ComputePipelineAbstract + Send + Sync + 'static> {
     pending_cpy: bool,
 }
 
-impl<P: ComputePipelineAbstract + Send + Sync + 'static> ComputeCluster<P> {
+impl<P: ComputePipelineAbstract + Send + Sync + 'static> GPUCompute<P> {
     pub fn new<C: Copy>(
         device: Arc<Device>,
         queue: Arc<Queue>,
@@ -39,7 +39,7 @@ impl<P: ComputePipelineAbstract + Send + Sync + 'static> ComputeCluster<P> {
         dim: &Dimensions,
     ) -> Self {
         if nb_nodes == 0 {
-            panic!("The number of compute nodes must be strictly positive.")
+            panic!(ERR_NB_NODES)
         }
 
         let total_size = dim.size() as usize;
@@ -88,11 +88,11 @@ impl<P: ComputePipelineAbstract + Send + Sync + 'static> ComputeCluster<P> {
     pub fn dispatch<A: GPUComputableAutomaton>(
         mut self,
         rx_op: Receiver<ComputeOP<A>>,
-        tx_data: Sender<Vec<Arc<CpuAccessibleBuffer<[u32]>>>>,
+        tx_data: Sender<GridHistoryOP<A::Cell>>,
     ) where
         A::Cell: Transcoder,
     {
-        
+        // @TODO implement this !
     }
 
     fn reset(&mut self, data: Vec<u32>) {
@@ -184,6 +184,8 @@ impl<P: ComputePipelineAbstract + Send + Sync + 'static> ComputeCluster<P> {
                 .unwrap();
 
             gens_to_compute -= launch_cnt;
+
+            // @TODO finish implementing this !
         }
     }
 }
@@ -289,25 +291,35 @@ impl<A: CPUComputableAutomaton> CPUCompute<A> {
             match rx_op.recv() {
                 Ok(op) => match op {
                     ComputeOP::Reset(grid) => self.grid = Some(grid),
-                    ComputeOP::Run(nb_gens) => {}
+                    ComputeOP::Run(nb_gens) => match self.grid {
+                        Some(start_grid) => {
+                            let mut grid = start_grid;
+                            for _i in 0..nb_gens {
+                                grid = CPUCompute::<A>::run(&grid);
+                                if let Err(_) = tx_data.send(GridHistoryOP::Push(grid.clone())) {
+                                    break;
+                                }
+                            }
+                            self.grid = Some(grid);
+                        }
+                        None => panic!(ERR_UNINITIALIZED),
+                    },
                 },
                 Err(_) => break, // Sender died, time to die
             }
         }
     }
 
-    fn run(&mut self) {
-        match &self.grid {
-            Some(grid) => {
-                let dim = grid.dim();
-                let mut new_data = Vec::with_capacity(dim.size() as usize);
-                for pos in PositionIterator::new(*dim) {
-                    let new_cell = A::update_cpu(&grid.view(pos));
-                    new_data.push(new_cell);
-                }
-                self.grid = Some(Grid::from_data(new_data, *dim));
-            }
-            None => panic!("A \"ComputeOP::Reset\" operation needs to happen before any \"ComputeOP::Run\" operation.")
+    fn run(grid: &Grid<A::Cell>) -> Grid<A::Cell> {
+        let dim = grid.dim();
+        let mut new_data = Vec::with_capacity(dim.size() as usize);
+        for pos in PositionIterator::new(*dim) {
+            let new_cell = A::update_cpu(&grid.view(pos));
+            new_data.push(new_cell);
         }
+        Grid::from_data(new_data, *dim)
     }
 }
+
+const ERR_NB_NODES: &str = "The number of compute nodes must be strictly positive.";
+const ERR_UNINITIALIZED: &str = "A \"ComputeOP::Reset\" operation needs to happen before any \"ComputeOP::Run\" operation.";
