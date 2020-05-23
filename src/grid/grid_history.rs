@@ -1,18 +1,19 @@
 // Standard library
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::sync::mpsc::{Receiver, Sender};
 
 // CELL
-use super::{Grid, Position};
+use super::{Grid, Position, PositionIterator};
 
-pub struct GridHistory<T: Copy + Default + Eq + PartialEq> {
+pub struct GridHistory<T: Copy + Debug + Default + Eq + PartialEq> {
     diffs: Vec<GridDiff<T>>,
     checkpoints: Vec<Grid<T>>,
     f_check: usize,
     last: Grid<T>,
 }
 
-impl<T: Copy + Default + Eq + PartialEq> GridHistory<T> {
+impl<T: Copy + Debug + Default + Eq + PartialEq> GridHistory<T> {
     pub fn new(initial_grid: &Grid<T>, f_check: usize) -> Self {
         Self {
             diffs: vec![],
@@ -31,7 +32,7 @@ impl<T: Copy + Default + Eq + PartialEq> GridHistory<T> {
     }
 
     pub fn get_gen(&self, gen: usize) -> Option<Grid<T>> {
-        if self.len() < gen {
+        if self.diffs.len() < gen {
             // We don't have that generation
             None
         } else {
@@ -57,8 +58,15 @@ impl<T: Copy + Default + Eq + PartialEq> GridHistory<T> {
         }
     }
 
-    pub fn len(&self) -> usize {
-        self.diffs.len() + 1
+    pub fn diff(&self, base_gen: usize, target_gen: usize) -> Option<GridDiff<T>> {
+        if target_gen < base_gen {
+            panic!("Base generation should be smaller than target generation.");
+        }
+        if self.diffs.len() < target_gen {
+            None
+        } else {
+            Some(GridDiff::stack(&self.diffs[base_gen..target_gen]))
+        }
     }
 
     pub fn dispatch(mut self, rx_op: Receiver<GridHistoryOP<T>>, tx_data: Sender<Option<Grid<T>>>) {
@@ -71,6 +79,7 @@ impl<T: Copy + Default + Eq + PartialEq> GridHistory<T> {
                         self.push(grid);
                         if let Some(gen) = registered {
                             if let Some(tx_grid) = self.get_gen(gen) {
+                                registered = None;
                                 if let Err(_) = tx_data.send(Some(tx_grid)) {
                                     break;
                                 }
@@ -92,7 +101,7 @@ impl<T: Copy + Default + Eq + PartialEq> GridHistory<T> {
                                 }
                             }
                         }
-                    },
+                    }
                 },
                 Err(_) => break, // All senders died, time to die
             }
@@ -100,6 +109,7 @@ impl<T: Copy + Default + Eq + PartialEq> GridHistory<T> {
     }
 }
 
+#[derive(Debug)]
 pub struct GridDiff<T: Copy + Default + PartialEq> {
     diffs: HashMap<Position, T>,
 }
@@ -111,22 +121,12 @@ impl<T: Copy + Default + Eq + PartialEq> GridDiff<T> {
             panic!("Both grids should be the same dimensions!")
         }
 
-        let mut x = 0;
-        let mut y = 0;
-
         let mut diffs = HashMap::new();
-        for (prev, next) in prev_grid.iter().zip(next_grid.iter()) {
-            // Check if there is a difference
+        for (pos, (prev, next)) in
+            PositionIterator::new(*dim).zip(prev_grid.iter().zip(next_grid.iter()))
+        {
             if prev != next {
-                diffs.insert(Position::new(x, y), *next);
-            }
-
-            // Update position
-            if x == dim.width - 1 {
-                x = 0;
-                y += 1;
-            } else {
-                x += 1;
+                diffs.insert(pos, *next);
             }
         }
 

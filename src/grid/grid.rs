@@ -8,7 +8,7 @@ use vulkano::buffer::CpuAccessibleBuffer;
 use super::{Dimensions, GridDiff, GridView, Position};
 use crate::simulator::Transcoder;
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Grid<T: Copy + Default> {
     dim: Dimensions,
     data: Vec<T>,
@@ -28,23 +28,17 @@ impl<T: Copy + Default> Grid<T> {
     }
 
     pub fn get(&self, pos: Position) -> &T {
-        if !self.pos_within_bounds(pos) {
-            panic!(ERR_POSITION)
-        }
+        self.is_valid_position(&pos);
         &self.data[self.dim.index(pos)]
     }
 
     pub fn set(&mut self, pos: Position, elem: T) -> () {
-        if !self.pos_within_bounds(pos) {
-            panic!(ERR_POSITION)
-        }
+        self.is_valid_position(&pos);
         self.data[self.dim.index(pos)] = elem;
     }
 
     pub fn view<'a>(&'a self, pos: Position) -> GridView<'a, T> {
-        if !self.pos_within_bounds(pos) {
-            panic!(ERR_POSITION)
-        }
+        self.is_valid_position(&pos);
         GridView::new(self, pos)
     }
 
@@ -56,8 +50,13 @@ impl<T: Copy + Default> Grid<T> {
         self.data.iter()
     }
 
-    fn pos_within_bounds(&self, pos: Position) -> bool {
-        pos.y() < self.dim.height() && pos.x() < self.dim.width()
+    fn is_valid_position(&self, pos: &Position) {
+        if !(pos.x() < self.dim.width() && pos.y() < self.dim.height()) {
+            panic!(format!(
+                "Position not within grid: {:?} does not fit in {:?}",
+                *pos, self.dim
+            ))
+        }
     }
 }
 
@@ -88,5 +87,3 @@ impl<T: Copy + Default + Transcoder> Grid<T> {
         Grid::from_data(decoded, *dim)
     }
 }
-
-const ERR_POSITION: &str = "Position not within grid.";

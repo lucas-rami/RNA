@@ -1,6 +1,5 @@
 // Standard library
 use std::io::{stdout, Write};
-use std::marker::PhantomData;
 use std::{thread, time};
 
 // External libraries
@@ -16,7 +15,7 @@ use crossterm::{
 mod module;
 mod styled_text;
 use crate::commands::Command;
-use crate::grid::Position;
+use crate::grid::{Dimensions, Position};
 use crate::simulator::{CellularAutomaton, Simulator};
 use module::Module;
 use styled_text::StyledText;
@@ -25,42 +24,45 @@ pub trait TermDrawableAutomaton: CellularAutomaton {
     fn style(&self, state: &Self::Cell) -> &StyledContent<char>;
 }
 
-pub struct TerminalUI<A: TermDrawableAutomaton, S: Simulator<A>> {
+pub struct TerminalUI<A: TermDrawableAutomaton> {
     size: Size,
     auto_mod: Module,
     info_mod: Module,
+    simulator: Simulator<A>,
+    current_gen: usize,
+    current_grid_size: Dimensions,
     view: (u32, u32),
     commands: Vec<Command>,
-    simulator: S,
-    _marker: PhantomData<A>,
 }
 
-impl<A: TermDrawableAutomaton, S: Simulator<A>> TerminalUI<A, S> {
-    pub fn new(simulator: S) -> Self {
+impl<A: TermDrawableAutomaton> TerminalUI<A> {
+    pub fn new(mut simulator: Simulator<A>) -> Self {
         // Clear terminal
         queue!(stdout(), terminal::Clear(terminal::ClearType::All))
             .expect("Failed to clear terminal.");
 
         let size = terminal::size().expect("Failed to read terminal size.");
         let modules = Self::create_modules(size);
+        let current_grid_size = *simulator.get_gen(0, false).unwrap().dim();
         let mut ui = Self {
             size,
             auto_mod: modules.0,
             info_mod: modules.1,
+            simulator,
+            current_gen: 0,
+            current_grid_size,
             view: (0, 0),
             commands: vec![
                 Command::new(RUN, vec!["nb_gens"]),
                 Command::new(GOTO, vec!["target_gen"]),
                 Command::new(VIEW, vec!["x", "y"]),
             ],
-            simulator,
-            _marker: PhantomData,
         };
 
         // Set simulator title and draw initial state
         let title = StyledText::from(vec![style(String::from(ui.simulator.name()))]);
         ui.auto_mod.set_title(title);
-        ui.draw_automaton();
+        ui.draw_automaton(0);
         ui
     }
 
@@ -212,17 +214,17 @@ impl<A: TermDrawableAutomaton, S: Simulator<A>> TerminalUI<A, S> {
                     match command.get_keyword() {
                         RUN => {
                             let nb_gens = *mapping.get("nb_gens").unwrap();
-                            match nb_gens.parse::<u64>() {
+                            match nb_gens.parse::<usize>() {
                                 Ok(nb_gens) => self.run(nb_gens),
                                 Err(_) => (), // Print error on terminal here
                             }
                         }
                         GOTO => {
-                            let cur_gen = self.simulator.current_gen();
+                            let max_gen = self.simulator.highest_gen();
                             let target_gen = *mapping.get("target_gen").unwrap();
-                            match target_gen.parse::<u64>() {
-                                Ok(target_gen) if target_gen > cur_gen => {
-                                    self.run(target_gen - cur_gen)
+                            match target_gen.parse::<usize>() {
+                                Ok(target_gen) if target_gen > max_gen => {
+                                    self.run(target_gen - max_gen)
                                 }
                                 Ok(_) => (),  // Print error on terminal here
                                 Err(_) => (), // Print error on terminal here
@@ -250,23 +252,24 @@ impl<A: TermDrawableAutomaton, S: Simulator<A>> TerminalUI<A, S> {
         }
     }
 
-    fn run(&mut self, nb_gens: u64) -> () {
+    fn run(&mut self, nb_gens: usize) -> () {
         // Update title
         let mut new_title = self.auto_mod.get_title().clone();
         new_title.push(
             style(format!(
                 " (running to generation {})",
-                (self.simulator.current_gen() + nb_gens).to_string()
+                (self.simulator.highest_gen() + nb_gens).to_string()
             ))
             .attribute(Attribute::SlowBlink)
             .attribute(Attribute::Italic),
         );
         self.auto_mod.set_title(new_title);
 
-        // Run the simulator
-        for _i in 0..nb_gens {
-            self.simulator.run(1);
-            self.draw_automaton();
+        // Launch asynchronous computations and draw each new generation
+        self.simulator.run(nb_gens);
+        for _ in 0..nb_gens {
+            self.current_gen += 1;
+            self.draw_automaton(self.current_gen);
             thread::sleep(time::Duration::from_millis(100));
         }
 
@@ -280,22 +283,27 @@ impl<A: TermDrawableAutomaton, S: Simulator<A>> TerminalUI<A, S> {
     }
 
     fn move_view(&mut self, x: u32, y: u32) -> () {
-        let dim = self.simulator.size();
-        if x < dim.width() && y < dim.height() {
+        if x < self.current_grid_size.width() && y < self.current_grid_size.height() {
             self.view.0 = x;
             self.view.1 = y;
-            self.draw_automaton();
+            self.draw_automaton(self.current_gen);
         }
     }
 
-    fn draw_automaton(&self) -> () {
+    fn draw_automaton(&mut self, gen: usize) -> () {
+        // Get generation's grid
+        let grid = self.simulator.get_gen(gen, false).unwrap();
+        self.current_grid_size = *grid.dim();
+
         // Get maximum render size and convert to (usize, usize)
         let max_render_size = self.auto_mod.get_render_size();
         let max_render_size = (max_render_size.0 as u32, max_render_size.1 as u32);
 
         // Determine real render size
-        let dim = self.simulator.size();
-        let mut render_size = (dim.width() - self.view.0, dim.height() - self.view.1);
+        let mut render_size = (
+            self.current_grid_size.width() - self.view.0,
+            self.current_grid_size.height() - self.view.1,
+        );
         if render_size.0 > max_render_size.0 {
             render_size.0 = max_render_size.0;
         }
@@ -316,7 +324,7 @@ impl<A: TermDrawableAutomaton, S: Simulator<A>> TerminalUI<A, S> {
             )
             .expect("Failed to move cursor.");
             for x in 0..render_size.0 {
-                let state = self.simulator.cell(Position::new(self.view.0 + x, row));
+                let state = grid.get(Position::new(self.view.0 + x, row));
                 let c = self.simulator.automaton().style(&state);
                 queue!(stdout, PrintStyledContent(c.clone())).expect("Failed to display simulator");
             }
@@ -325,20 +333,19 @@ impl<A: TermDrawableAutomaton, S: Simulator<A>> TerminalUI<A, S> {
         }
 
         // Update info module
-        let auto_size = self.simulator.size();
         let (x, y) = self.info_mod.get_render_pos();
         let (max_len, _) = self.info_mod.get_render_size();
 
         let generation = StyledText::from(vec![
             style(String::from(" Generation: ")).attribute(Attribute::Italic),
-            style(self.simulator.current_gen().to_string()),
+            style(gen.to_string()),
         ]);
         let size = StyledText::from(vec![
             style(String::from(" Total size: ")).attribute(Attribute::Italic),
             style(format!(
-                "({}, {})",
-                auto_size.width().to_string(),
-                auto_size.height().to_string()
+                "{} x {}",
+                self.current_grid_size.width().to_string(),
+                self.current_grid_size.height().to_string()
             )),
         ]);
         let view = StyledText::from(vec![
@@ -373,7 +380,7 @@ impl<A: TermDrawableAutomaton, S: Simulator<A>> TerminalUI<A, S> {
         self.info_mod = new_modules.1;
 
         // Return cursor to command
-        self.draw_automaton();
+        self.draw_automaton(self.current_gen);
         self.cursor_to_command();
         self.flush();
     }

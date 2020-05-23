@@ -1,5 +1,4 @@
 // Standard library
-use std::hash::Hash;
 use std::sync::{
     mpsc::{self, Receiver, Sender},
     Arc,
@@ -7,7 +6,6 @@ use std::sync::{
 use std::thread;
 
 // External libraries
-use vulkano::buffer::CpuAccessibleBuffer;
 use vulkano::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::instance::{Instance, PhysicalDevice};
@@ -15,12 +13,12 @@ use vulkano::pipeline::ComputePipelineAbstract;
 
 // CELL
 mod compute;
-use crate::grid::{Dimensions, Grid, GridHistory, GridHistoryOP, GridView, Position};
+use crate::grid::{Grid, GridHistory, GridHistoryOP, GridView, PositionIterator};
 use compute::{CPUCompute, GPUCompute};
 
 // ############# Traits and associated structs #############
 
-pub trait CellType: Copy + Default + Eq + PartialEq + Send {}
+pub trait CellType: Copy + Default + std::fmt::Debug + Eq + PartialEq + Send {}
 
 pub trait CellularAutomaton: 'static {
     type Cell: CellType;
@@ -31,7 +29,17 @@ pub trait CellularAutomaton: 'static {
 }
 
 pub trait CPUComputableAutomaton: CellularAutomaton {
-    fn update_cpu<'a>(grid: &GridView<'a, Self::Cell>) -> Self::Cell;
+    fn update_cell<'a>(grid: &GridView<'a, Self::Cell>) -> Self::Cell;
+
+    fn update_grid(grid: &Grid<Self::Cell>) -> Grid<Self::Cell> {
+        let dim = grid.dim();
+        let mut new_data = Vec::with_capacity(dim.size() as usize);
+        for pos in PositionIterator::new(*dim) {
+            let new_cell = Self::update_cell(&grid.view(pos));
+            new_data.push(new_cell);
+        }
+        Grid::from_data(new_data, *dim)
+    }
 }
 
 pub trait GPUComputableAutomaton: CellularAutomaton
@@ -77,6 +85,10 @@ impl<A: CellularAutomaton> Simulator<A> {
 
     pub fn automaton(&self) -> &A {
         &self.automaton
+    }
+
+    pub fn highest_gen(&self) -> usize {
+        self.max_gen
     }
 
     pub fn run(&mut self, nb_gens: usize) {
@@ -210,3 +222,59 @@ pub enum ComputeOP<A: CellularAutomaton> {
 const ERR_DEAD_CPU_COMPUTE: &str = "The CPUCompute thread terminated unexpectedly.";
 const ERR_DEAD_GPU_COMPUTE: &str = "The GPUCompute thread terminated unexpectedly.";
 const ERR_DEAD_GRID_HISTORY: &str = "The GridHistory thread terminated unexpectedly.";
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+    use crate::game_of_life::*;
+    use crate::grid::Grid;
+
+    #[test]
+    fn cpu_get_gen() {
+        let grid = conway_canon();
+        let mut sim = Simulator::new_cpu_sim("Simulator", GameOfLife::new(), &grid);
+        sim.run(20);
+        assert_eq!(
+            sim.get_gen(20, false).unwrap(),
+            compute_gen::<GameOfLife>(&grid, 20)
+        );
+    }
+
+    #[test]
+    fn cpu_get_gen_on_demand() {
+        let grid = conway_canon();
+        let mut sim = Simulator::new_cpu_sim("Simulator", GameOfLife::new(), &grid);
+        assert_eq!(
+            sim.get_gen(20, true).unwrap(),
+            compute_gen::<GameOfLife>(&grid, 20)
+        );
+    }
+
+    #[test]
+    fn cpu_get_multiple_gens() {
+        let grid = conway_canon();
+        let mut sim = Simulator::new_cpu_sim("Simulator", GameOfLife::new(), &grid);
+        sim.run(50);
+
+        let gens = vec![1, 7, 10, 19, 20];
+
+        for gen in gens {
+            assert_eq!(
+                sim.get_gen(gen, false).unwrap(),
+                compute_gen::<GameOfLife>(&grid, gen)
+            );
+        }
+    }
+
+    fn compute_gen<A: CPUComputableAutomaton>(
+        base: &Grid<A::Cell>,
+        nb_gens: usize,
+    ) -> Grid<A::Cell> {
+        let mut grid = base.clone();
+        for _i in 0..nb_gens {
+            grid = A::update_grid(&grid);
+        }
+        grid
+    }
+}

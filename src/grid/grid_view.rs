@@ -24,9 +24,9 @@ impl<'a, T: Copy + Default> GridView<'a, T> {
         // @TODO to refactor once we have a formally defined notion of neighborhood
         let dim = self.grid.dim();
         if 1 <= self.pos.x()
-            && self.pos.x() < dim.width()
+            && self.pos.x() < dim.width() - 1
             && 1 <= self.pos.y()
-            && self.pos.y() < dim.height()
+            && self.pos.y() < dim.height() - 1
         {
             let x = {
                 if coords.x() < 0 {

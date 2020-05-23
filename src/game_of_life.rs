@@ -10,14 +10,14 @@ use vulkano::device::Device;
 use vulkano::pipeline::ComputePipeline;
 
 // CELL
-use crate::grid::{Dimensions, Grid, GridView, Position, RelCoords, MOORE_NEIGHBORHOOD};
+use crate::grid::{Dimensions, Grid, GridView, Position, MOORE_NEIGHBORHOOD};
 use crate::simulator::{
     CPUComputableAutomaton, CellType, CellularAutomaton, GPUComputableAutomaton, PipelineInfo,
     Transcoder,
 };
-// use crate::terminal_ui::TermDrawableAutomaton;
+use crate::terminal_ui::TermDrawableAutomaton;
 
-#[derive(Copy, Clone, Eq, PartialEq, std::hash::Hash)]
+#[derive(Copy, Clone, Eq, PartialEq, std::hash::Hash, std::fmt::Debug)]
 pub enum States {
     Dead,
     Alive,
@@ -61,7 +61,7 @@ impl CellularAutomaton for GameOfLife {
 }
 
 impl CPUComputableAutomaton for GameOfLife {
-    fn update_cpu<'a>(grid: &GridView<'a, Self::Cell>) -> Self::Cell {
+    fn update_cell<'a>(grid: &GridView<'a, Self::Cell>) -> Self::Cell {
         // Count the number of alive cells around us
         let nb_alive_neighbors =
             grid.get_relative_mul(&MOORE_NEIGHBORHOOD)
@@ -135,11 +135,11 @@ impl GPUComputableAutomaton for GameOfLife {
     }
 }
 
-// impl TermDrawableAutomaton for GameOfLife {
-//     fn style(&self, state: &Self::Cell) -> &StyledContent<char> {
-//         &self.style_map.get(state).unwrap()
-//     }
-// }
+impl TermDrawableAutomaton for GameOfLife {
+    fn style(&self, state: &Self::Cell) -> &StyledContent<char> {
+        &self.style_map.get(state).unwrap()
+    }
+}
 
 mod shader {
     vulkano_shaders::shader! {
@@ -149,7 +149,7 @@ mod shader {
 }
 
 pub fn conway_canon() -> Grid<States> {
-    let mut grid = Grid::new(Dimensions::new(200, 100));
+    let mut grid = Grid::new(Dimensions::new(40, 20));
     grid = cascade!(
         grid;
         ..set(Position::new(1, 5), States::Alive);

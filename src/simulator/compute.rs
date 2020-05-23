@@ -16,7 +16,7 @@ use vulkano::sync::{self, GpuFuture, NowFuture};
 
 // CELL
 use super::{CPUComputableAutomaton, ComputeOP, GPUComputableAutomaton, PipelineInfo, Transcoder};
-use crate::grid::{Dimensions, Grid, GridHistoryOP, PositionIterator};
+use crate::grid::{Dimensions, Grid, GridHistoryOP};
 
 pub struct GPUCompute<P: ComputePipelineAbstract + Send + Sync + 'static> {
     device: Arc<Device>,
@@ -295,7 +295,7 @@ impl<A: CPUComputableAutomaton> CPUCompute<A> {
                         Some(start_grid) => {
                             let mut grid = start_grid;
                             for _i in 0..nb_gens {
-                                grid = CPUCompute::<A>::run(&grid);
+                                grid = A::update_grid(&grid);
                                 if let Err(_) = tx_data.send(GridHistoryOP::Push(grid.clone())) {
                                     break;
                                 }
@@ -309,17 +309,8 @@ impl<A: CPUComputableAutomaton> CPUCompute<A> {
             }
         }
     }
-
-    fn run(grid: &Grid<A::Cell>) -> Grid<A::Cell> {
-        let dim = grid.dim();
-        let mut new_data = Vec::with_capacity(dim.size() as usize);
-        for pos in PositionIterator::new(*dim) {
-            let new_cell = A::update_cpu(&grid.view(pos));
-            new_data.push(new_cell);
-        }
-        Grid::from_data(new_data, *dim)
-    }
 }
 
 const ERR_NB_NODES: &str = "The number of compute nodes must be strictly positive.";
-const ERR_UNINITIALIZED: &str = "A \"ComputeOP::Reset\" operation needs to happen before any \"ComputeOP::Run\" operation.";
+const ERR_UNINITIALIZED: &str =
+    "A \"ComputeOP::Reset\" operation needs to happen before any \"ComputeOP::Run\" operation.";
