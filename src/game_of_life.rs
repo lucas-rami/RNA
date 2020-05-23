@@ -148,8 +148,8 @@ mod shader {
     }
 }
 
-pub fn conway_canon() -> Grid<States> {
-    let mut grid = Grid::new(Dimensions::new(40, 20));
+pub fn gosper_glider_gun() -> Grid<States> {
+    let mut grid = Grid::new(Dimensions::new(100, 50));
     grid = cascade!(
         grid;
         ..set(Position::new(1, 5), States::Alive);
@@ -188,6 +188,19 @@ pub fn conway_canon() -> Grid<States> {
         ..set(Position::new(35, 4), States::Alive);
         ..set(Position::new(36, 3), States::Alive);
         ..set(Position::new(36, 4), States::Alive);
+    );
+    grid
+}
+
+pub fn r_pentomino() -> Grid<States> {
+    let mut grid = Grid::new(Dimensions::new(201, 201));
+    grid = cascade!(
+        grid;
+        ..set(Position::new(100, 99), States::Alive);
+        ..set(Position::new(101, 99), States::Alive);
+        ..set(Position::new(99, 100), States::Alive);
+        ..set(Position::new(100, 100), States::Alive);
+        ..set(Position::new(100, 101), States::Alive);
     );
     grid
 }

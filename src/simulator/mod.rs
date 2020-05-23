@@ -98,6 +98,12 @@ impl<A: CellularAutomaton> Simulator<A> {
         self.max_gen += nb_gens;
     }
 
+    pub fn goto(&mut self, target_gen: usize) {
+        if target_gen > self.max_gen {
+            self.run(target_gen - self.max_gen);
+        }
+    }
+
     pub fn get_gen(&mut self, gen: usize, run_to: bool) -> Option<Grid<A::Cell>> {
         if self.max_gen < gen {
             if run_to {

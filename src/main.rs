@@ -7,13 +7,17 @@ mod game_of_life;
 mod grid;
 mod simulator;
 mod terminal_ui;
-use game_of_life::{conway_canon, GameOfLife};
+use game_of_life::GameOfLife;
 use simulator::Simulator;
 use terminal_ui::TerminalUI;
 
 fn main() -> () {
     let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
-    let mut sim = Simulator::new_cpu_sim("Conway GPU", GameOfLife::new(), &conway_canon());
+    let mut sim = Simulator::new_cpu_sim(
+        "Conway GPU",
+        GameOfLife::new(),
+        &game_of_life::gosper_glider_gun(),
+    );
     let mut term_ui = TerminalUI::new(sim);
-    term_ui.cmd_interpreter().unwrap();    
+    term_ui.cmd_interpreter().unwrap();
 }

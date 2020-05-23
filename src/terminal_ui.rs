@@ -56,6 +56,7 @@ impl<A: TermDrawableAutomaton> TerminalUI<A> {
                 Command::new(RUN, vec!["nb_gens"]),
                 Command::new(GOTO, vec!["target_gen"]),
                 Command::new(VIEW, vec!["x", "y"]),
+                Command::new(SHOW, vec!["gen"]),
             ],
         };
 
@@ -215,18 +216,14 @@ impl<A: TermDrawableAutomaton> TerminalUI<A> {
                         RUN => {
                             let nb_gens = *mapping.get("nb_gens").unwrap();
                             match nb_gens.parse::<usize>() {
-                                Ok(nb_gens) => self.run(nb_gens),
+                                Ok(nb_gens) => self.goto(self.current_gen + nb_gens),
                                 Err(_) => (), // Print error on terminal here
                             }
                         }
                         GOTO => {
-                            let max_gen = self.simulator.highest_gen();
                             let target_gen = *mapping.get("target_gen").unwrap();
                             match target_gen.parse::<usize>() {
-                                Ok(target_gen) if target_gen > max_gen => {
-                                    self.run(target_gen - max_gen)
-                                }
-                                Ok(_) => (),  // Print error on terminal here
+                                Ok(target_gen) => self.goto(target_gen),
                                 Err(_) => (), // Print error on terminal here
                             }
                         }
@@ -243,6 +240,13 @@ impl<A: TermDrawableAutomaton> TerminalUI<A> {
                                 // Print error on terminal here
                             }
                         }
+                        SHOW => {
+                            let gen = *mapping.get("gen").unwrap();
+                            match gen.parse::<usize>() {
+                                Ok(gen) => self.draw_automaton(gen),
+                                Err(_) => (), // Print error on terminal here
+                            }
+                        }
                         _ => panic!("Unsupported command."),
                     }
                     break;
@@ -252,25 +256,28 @@ impl<A: TermDrawableAutomaton> TerminalUI<A> {
         }
     }
 
-    fn run(&mut self, nb_gens: usize) -> () {
+    fn goto(&mut self, target_gen: usize) -> () {
         // Update title
         let mut new_title = self.auto_mod.get_title().clone();
         new_title.push(
             style(format!(
                 " (running to generation {})",
-                (self.simulator.highest_gen() + nb_gens).to_string()
+                target_gen.to_string()
             ))
             .attribute(Attribute::SlowBlink)
             .attribute(Attribute::Italic),
         );
         self.auto_mod.set_title(new_title);
 
-        // Launch asynchronous computations and draw each new generation
-        self.simulator.run(nb_gens);
-        for _ in 0..nb_gens {
-            self.current_gen += 1;
-            self.draw_automaton(self.current_gen);
-            thread::sleep(time::Duration::from_millis(100));
+        if target_gen <= self.current_gen {
+            self.draw_automaton(target_gen);
+        } else {
+            // Launch asynchronous computations and draw each new generation
+            self.simulator.goto(target_gen);
+            for i in self.current_gen..target_gen {
+                self.draw_automaton(i + 1);
+                thread::sleep(time::Duration::from_millis(100));
+            }
         }
 
         // Reset title to original
@@ -291,9 +298,10 @@ impl<A: TermDrawableAutomaton> TerminalUI<A> {
     }
 
     fn draw_automaton(&mut self, gen: usize) -> () {
-        // Get generation's grid
-        let grid = self.simulator.get_gen(gen, false).unwrap();
+        // Get generation's grid and update state
+        let grid = self.simulator.get_gen(gen, true).unwrap();
         self.current_grid_size = *grid.dim();
+        self.current_gen = gen;
 
         // Get maximum render size and convert to (usize, usize)
         let max_render_size = self.auto_mod.get_render_size();
@@ -418,3 +426,4 @@ const HEIGHT_INFO: u16 = 10;
 const RUN: &str = "run";
 const GOTO: &str = "goto";
 const VIEW: &str = "view";
+const SHOW: &str = "show";
