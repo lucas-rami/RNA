@@ -238,7 +238,7 @@ mod tests {
 
     #[test]
     fn cpu_get_gen() {
-        let grid = conway_canon();
+        let grid = r_pentomino();
         let mut sim = Simulator::new_cpu_sim("Simulator", GameOfLife::new(), &grid);
         sim.run(20);
         assert_eq!(
@@ -249,7 +249,7 @@ mod tests {
 
     #[test]
     fn cpu_get_gen_on_demand() {
-        let grid = conway_canon();
+        let grid = r_pentomino();
         let mut sim = Simulator::new_cpu_sim("Simulator", GameOfLife::new(), &grid);
         assert_eq!(
             sim.get_gen(20, true).unwrap(),
@@ -259,7 +259,7 @@ mod tests {
 
     #[test]
     fn cpu_get_multiple_gens() {
-        let grid = conway_canon();
+        let grid = r_pentomino();
         let mut sim = Simulator::new_cpu_sim("Simulator", GameOfLife::new(), &grid);
         sim.run(50);
 

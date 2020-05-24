@@ -21,7 +21,7 @@ use module::Module;
 use styled_text::StyledText;
 
 pub trait TermDrawableAutomaton: CellularAutomaton {
-    fn style(&self, state: &Self::Cell) -> &StyledContent<char>;
+    fn style(&self, state: &Self::Cell) -> StyledContent<char>;
 }
 
 pub struct TerminalUI<A: TermDrawableAutomaton> {
@@ -334,7 +334,7 @@ impl<A: TermDrawableAutomaton> TerminalUI<A> {
             for x in 0..render_size.0 {
                 let state = grid.get(Position::new(self.view.0 + x, row));
                 let c = self.simulator.automaton().style(&state);
-                queue!(stdout, PrintStyledContent(c.clone())).expect("Failed to display simulator");
+                queue!(stdout, PrintStyledContent(c)).expect("Failed to display simulator");
             }
             // Next row
             row += 1

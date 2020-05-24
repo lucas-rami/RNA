@@ -136,8 +136,8 @@ impl GPUComputableAutomaton for GameOfLife {
 }
 
 impl TermDrawableAutomaton for GameOfLife {
-    fn style(&self, state: &Self::Cell) -> &StyledContent<char> {
-        &self.style_map.get(state).unwrap()
+    fn style(&self, state: &Self::Cell) -> StyledContent<char> {
+        self.style_map.get(state).unwrap().clone()
     }
 }
 
