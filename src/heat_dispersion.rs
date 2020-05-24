@@ -1,11 +1,9 @@
 // External libraries
-use cascade::cascade;
 use crossterm::style::{style, Attribute, Color, StyledContent};
 
 // CELL
+use crate::automaton::*;
 use crate::grid::{Dimensions, Grid, GridView, Position, MOORE_NEIGHBORHOOD};
-use crate::simulator::{CPUComputableAutomaton, CellType, CellularAutomaton};
-use crate::terminal_ui::TermDrawableAutomaton;
 
 pub struct HeatDispersion {
     name: &'static str,
@@ -60,7 +58,7 @@ impl TermDrawableAutomaton for HeatDispersion {
 pub fn basic() -> Grid<u8> {
     let mut grid = Grid::new(Dimensions::new(40, 40));
     for x in 10..30 {
-        if x <= 15 || 25 <= x { 
+        if x <= 15 || 25 <= x {
             for y in 10..30 {
                 grid.set(Position::new(x, y), 255);
             }

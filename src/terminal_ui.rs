@@ -7,22 +7,19 @@ use crossterm::{
     cursor,
     event::{Event, KeyCode},
     queue,
-    style::{style, Attribute, Print, PrintStyledContent, StyledContent},
+    style::{style, Attribute, Print, PrintStyledContent},
     terminal,
 };
 
 // CELL
 mod module;
 mod styled_text;
+use crate::automaton::TermDrawableAutomaton;
 use crate::commands::Command;
 use crate::grid::{Dimensions, Position};
-use crate::simulator::{CellularAutomaton, Simulator};
+use crate::simulator::Simulator;
 use module::Module;
 use styled_text::StyledText;
-
-pub trait TermDrawableAutomaton: CellularAutomaton {
-    fn style(&self, state: &Self::Cell) -> StyledContent<char>;
-}
 
 pub struct TerminalUI<A: TermDrawableAutomaton> {
     size: Size,

@@ -1,5 +1,6 @@
 // Standard library
 use std::collections::VecDeque;
+use std::marker::PhantomData;
 use std::sync::{
     mpsc::{Receiver, Sender},
     Arc,
@@ -15,7 +16,8 @@ use vulkano::device::{Device, Queue};
 use vulkano::sync::{self, GpuFuture, NowFuture};
 
 // CELL
-use super::{CPUComputableAutomaton, ComputeOP, GPUComputableAutomaton, PipelineInfo, Transcoder};
+use super::simulator::ComputeOP;
+use crate::automaton::{CPUComputableAutomaton, GPUComputableAutomaton, PipelineInfo, Transcoder};
 use crate::grid::{Dimensions, Grid, GridHistoryOP};
 
 pub struct GPUCompute<A: GPUComputableAutomaton>
@@ -24,11 +26,11 @@ where
 {
     device: Arc<Device>,
     queue: Arc<Queue>,
-    pipe_info: PipelineInfo<A::Pipeline>,
     gpu_bufs: Vec<Arc<DeviceLocalBuffer<[u32]>>>,
     nodes: Vec<ComputeNode>,
     next: usize,
     grid_dim: Dimensions,
+    _marker: PhantomData<A>,
 }
 
 impl<A: GPUComputableAutomaton> GPUCompute<A>
@@ -38,14 +40,14 @@ where
     pub fn new(
         device: Arc<Device>,
         queue: Arc<Queue>,
-        pipe_info: PipelineInfo<A::Pipeline>,
-        push_constants: A::PushConstants,
         nb_nodes: usize,
         initial_grid: &Grid<A::Cell>,
     ) -> Self {
         if nb_nodes < 2 {
             panic!(ERR_NB_NODES)
         }
+        let pipe_info = A::vk_setup(&device);
+        let pc = A::push_constants(&initial_grid);
 
         let dim = *initial_grid.dim();
         let total_size = dim.size() as usize;
@@ -53,8 +55,13 @@ where
         for _ in 0..nb_nodes {
             let q_family = vec![queue.family()];
             gpu_bufs.push(
-                DeviceLocalBuffer::array(device.clone(), total_size, BufferUsage::all(), q_family)
-                    .unwrap(),
+                DeviceLocalBuffer::array(
+                    Arc::clone(&device),
+                    total_size,
+                    BufferUsage::all(),
+                    q_family,
+                )
+                .unwrap(),
             )
         }
 
@@ -73,7 +80,7 @@ where
                 &pipe_info,
                 Arc::clone(&gpu_bufs[i]),
                 Arc::clone(&gpu_bufs[j]),
-                push_constants,
+                pc,
                 &dim,
             ))
         }
@@ -82,11 +89,11 @@ where
         let mut compute = Self {
             device,
             queue,
-            pipe_info,
             gpu_bufs,
             nodes,
             next: 0,
             grid_dim: dim,
+            _marker: PhantomData,
         };
         compute.reset(initial_grid);
         compute
@@ -118,14 +125,14 @@ where
 
         // Put data in first GPU buffer
         let cpu_buf = CpuAccessibleBuffer::from_iter(
-            self.device.clone(),
+            Arc::clone(&self.device),
             BufferUsage::transfer_source(),
             false,
             initial_grid.encode().into_iter(),
         )
         .unwrap();
         let cmd = AutoCommandBufferBuilder::primary_one_time_submit(
-            self.device.clone(),
+            Arc::clone(&self.device),
             self.queue.family(),
         )
         .unwrap()
@@ -133,7 +140,7 @@ where
         .unwrap()
         .build()
         .unwrap();
-        sync::now(self.device.clone())
+        sync::now(Arc::clone(&self.device))
             .then_execute(self.queue.clone(), cmd)
             .unwrap()
             .then_signal_fence_and_flush()
@@ -143,7 +150,6 @@ where
     }
 
     fn run(&mut self, nb_gens: usize, tx_data: &Sender<GridHistoryOP<A::Cell>>) -> bool {
-        
         // Total number of compute nodes
         let nb_nodes = self.nodes.len();
 
@@ -266,7 +272,7 @@ impl ComputeNode {
     {
         let cpu_out = unsafe {
             CpuAccessibleBuffer::uninitialized_array(
-                device.clone(),
+                Arc::clone(&device),
                 dim.size() as usize,
                 BufferUsage::all(),
                 true,
@@ -275,22 +281,22 @@ impl ComputeNode {
         };
 
         let set = Arc::new(
-            PersistentDescriptorSet::start(pipe_info.layout.clone())
-                .add_buffer(gpu_src.clone())
+            PersistentDescriptorSet::start(Arc::clone(&pipe_info.layout))
+                .add_buffer(Arc::clone(&gpu_src))
                 .unwrap()
-                .add_buffer(gpu_dst.clone())
+                .add_buffer(Arc::clone(&gpu_dst))
                 .unwrap()
                 .build()
                 .unwrap(),
         );
 
         let cmd_exe = Arc::new(
-            AutoCommandBufferBuilder::primary(device.clone(), queue.family())
+            AutoCommandBufferBuilder::primary(Arc::clone(&device), queue.family())
                 .unwrap()
                 .dispatch(
                     [dim.width(), dim.height(), 1],
-                    pipe_info.pipeline.clone(),
-                    set.clone(),
+                    Arc::clone(&pipe_info.pipeline),
+                    Arc::clone(&set),
                     push_constants,
                 )
                 .unwrap()
@@ -299,9 +305,9 @@ impl ComputeNode {
         );
 
         let cmd_cpy = Arc::new(
-            AutoCommandBufferBuilder::primary(device.clone(), queue.family())
+            AutoCommandBufferBuilder::primary(Arc::clone(&device), queue.family())
                 .unwrap()
-                .copy_buffer(gpu_dst.clone(), cpu_out.clone())
+                .copy_buffer(Arc::clone(&gpu_dst), Arc::clone(&cpu_out))
                 .unwrap()
                 .build()
                 .unwrap(),
@@ -318,13 +324,13 @@ impl ComputeNode {
 
     fn exe<F: GpuFuture>(&self, after: F) -> CommandBufferExecFuture<F, Arc<AutoCommandBuffer>> {
         after
-            .then_execute(self.queue.clone(), self.cmd_exe.clone())
+            .then_execute(Arc::clone(&self.queue), Arc::clone(&self.cmd_exe))
             .unwrap()
     }
 
     fn cpy(&self) -> CommandBufferExecFuture<NowFuture, Arc<AutoCommandBuffer>> {
-        sync::now(self.device.clone())
-            .then_execute(self.queue.clone(), self.cmd_cpy.clone())
+        sync::now(Arc::clone(&self.device))
+            .then_execute(Arc::clone(&self.queue), Arc::clone(&self.cmd_cpy))
             .unwrap()
     }
 }

@@ -2,6 +2,7 @@
 use vulkano::instance::{Instance, InstanceExtensions};
 
 // CELL
+mod automaton;
 mod commands;
 mod game_of_life;
 mod grid;
@@ -18,7 +19,7 @@ fn main() -> () {
         "Conway GPU",
         GameOfLife::new(),
         &game_of_life::gosper_glider_gun(),
-        instance
+        instance,
     );
     let mut term_ui = TerminalUI::new(sim);
     term_ui.cmd_interpreter().unwrap();

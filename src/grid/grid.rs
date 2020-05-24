@@ -6,7 +6,7 @@ use vulkano::buffer::CpuAccessibleBuffer;
 
 // CELL
 use super::{Dimensions, GridDiff, GridView, Position};
-use crate::simulator::Transcoder;
+use crate::automaton::Transcoder;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Grid<T: Copy + Default> {

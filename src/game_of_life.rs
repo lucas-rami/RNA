@@ -11,11 +11,7 @@ use vulkano::pipeline::ComputePipeline;
 
 // CELL
 use crate::grid::{Dimensions, Grid, GridView, Position, MOORE_NEIGHBORHOOD};
-use crate::simulator::{
-    CPUComputableAutomaton, CellType, CellularAutomaton, GPUComputableAutomaton, PipelineInfo,
-    Transcoder,
-};
-use crate::terminal_ui::TermDrawableAutomaton;
+use crate::automaton::*;
 
 #[derive(Copy, Clone, Eq, PartialEq, std::hash::Hash, std::fmt::Debug)]
 pub enum States {
@@ -115,7 +111,7 @@ impl GPUComputableAutomaton for GameOfLife {
     type Pipeline = ComputePipeline<PipelineLayout<shader::Layout>>;
     type PushConstants = shader::ty::Dim;
 
-    fn vk_setup(&self, device: &Arc<Device>) -> PipelineInfo<Self::Pipeline> {
+    fn vk_setup(device: &Arc<Device>) -> PipelineInfo<Self::Pipeline> {
         let shader = shader::Shader::load(device.clone()).unwrap();
         let pipeline =
             ComputePipeline::new(device.clone(), &shader.main_entry_point(), &()).unwrap();
@@ -126,7 +122,7 @@ impl GPUComputableAutomaton for GameOfLife {
         }
     }
 
-    fn push_constants(&self, grid: &Grid<Self::Cell>) -> Self::PushConstants {
+    fn push_constants(grid: &Grid<Self::Cell>) -> Self::PushConstants {
         let dim = grid.dim();
         shader::ty::Dim {
             nb_rows: dim.height() as u32,
