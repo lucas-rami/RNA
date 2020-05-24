@@ -131,7 +131,7 @@ impl<A: CPUComputableAutomaton> Simulator<A> {
         let (tx_data, rx_data) = mpsc::channel();
 
         // Dispatch a CPUCompute thread and GridHistory thread
-        let compute = CPUCompute::new();
+        let compute = CPUCompute::new(grid.clone());
         let history = GridHistory::new(&grid, 10);
         let tx_grid_op_compute = tx_grid_op.clone();
         thread::spawn(move || compute.dispatch(rx_comp_op, tx_grid_op_compute));
@@ -189,7 +189,7 @@ where
             // Get pipeline information from automaton and create compute manager
             let pipe_info = automaton.vk_setup(&device);
             let pc = automaton.push_constants(&grid);
-            GPUCompute::new(device, queue, pipe_info, pc, 4, grid.dim())
+            GPUCompute::new(device, queue, pipe_info, pc, 16, &grid)
         };
 
         // Create communication channels
@@ -232,44 +232,45 @@ const ERR_DEAD_GRID_HISTORY: &str = "The GridHistory thread terminated unexpecte
 #[cfg(test)]
 mod tests {
 
-    use super::*;
+    // Standard library
+    use std::time::Instant;
+
+    // External libraries
+    use vulkano::instance::{Instance, InstanceExtensions};
+
+    // CELL
+    use super::{CPUComputableAutomaton, Simulator};
     use crate::game_of_life::*;
     use crate::grid::Grid;
 
     #[test]
-    fn cpu_get_gen() {
-        let grid = r_pentomino();
-        let mut sim = Simulator::new_cpu_sim("Simulator", GameOfLife::new(), &grid);
-        sim.run(20);
-        assert_eq!(
-            sim.get_gen(20, false).unwrap(),
-            compute_gen::<GameOfLife>(&grid, 20)
-        );
-    }
-
-    #[test]
-    fn cpu_get_gen_on_demand() {
-        let grid = r_pentomino();
-        let mut sim = Simulator::new_cpu_sim("Simulator", GameOfLife::new(), &grid);
-        assert_eq!(
-            sim.get_gen(20, true).unwrap(),
-            compute_gen::<GameOfLife>(&grid, 20)
-        );
-    }
-
-    #[test]
     fn cpu_get_multiple_gens() {
-        let grid = r_pentomino();
-        let mut sim = Simulator::new_cpu_sim("Simulator", GameOfLife::new(), &grid);
-        sim.run(50);
+        let grid = gosper_glider_gun();
+        let sim = Simulator::new_cpu_sim("Simulator", GameOfLife::new(), &grid);
+        get_multiple_gens(sim, &grid, vec![100, 1, 7, 10, 19, 20]);
+    }
 
-        let gens = vec![1, 7, 10, 19, 20];
 
-        for gen in gens {
-            assert_eq!(
-                sim.get_gen(gen, false).unwrap(),
-                compute_gen::<GameOfLife>(&grid, gen)
-            );
+    #[test]
+    fn gpu_get_multiple_gens() {
+        let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
+        let grid = gosper_glider_gun();
+        let sim = Simulator::new_gpu_sim("Simulator", GameOfLife::new(), &grid, instance);
+        get_multiple_gens(sim, &grid, vec![100, 1, 7, 10, 19, 20]);
+    }
+
+    fn get_multiple_gens<A: CPUComputableAutomaton>(
+        mut sim: Simulator<A>,
+        initial_grid: &Grid<A::Cell>,
+        gens: Vec<usize>,
+    ) {
+        let ref_grids: Vec<Grid<A::Cell>> = gens
+            .iter()
+            .map(|gen| compute_gen::<A>(&initial_grid, *gen))
+            .collect();
+
+        for (gen, grid) in gens.iter().zip(ref_grids.iter()) {
+            assert_eq!(grid, &sim.get_gen(*gen, true).unwrap());
         }
     }
 

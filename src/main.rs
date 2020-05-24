@@ -14,7 +14,7 @@ use terminal_ui::TerminalUI;
 
 fn main() -> () {
     let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
-    let mut sim = Simulator::new_gpu_sim(
+    let sim = Simulator::new_gpu_sim(
         "Conway GPU",
         GameOfLife::new(),
         &game_of_life::gosper_glider_gun(),

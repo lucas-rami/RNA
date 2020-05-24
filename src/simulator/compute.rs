@@ -1,4 +1,5 @@
 // Standard library
+use std::collections::VecDeque;
 use std::sync::{
     mpsc::{Receiver, Sender},
     Arc,
@@ -11,39 +12,43 @@ use vulkano::command_buffer::{
 };
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::{Device, Queue};
-use vulkano::pipeline::ComputePipelineAbstract;
 use vulkano::sync::{self, GpuFuture, NowFuture};
 
 // CELL
 use super::{CPUComputableAutomaton, ComputeOP, GPUComputableAutomaton, PipelineInfo, Transcoder};
 use crate::grid::{Dimensions, Grid, GridHistoryOP};
 
-pub struct GPUCompute<P: ComputePipelineAbstract + Send + Sync + 'static> {
+pub struct GPUCompute<A: GPUComputableAutomaton>
+where
+    A::Cell: Transcoder,
+{
     device: Arc<Device>,
     queue: Arc<Queue>,
-    pipe_info: PipelineInfo<P>,
+    pipe_info: PipelineInfo<A::Pipeline>,
     gpu_bufs: Vec<Arc<DeviceLocalBuffer<[u32]>>>,
     nodes: Vec<ComputeNode>,
-    next_exe: usize,
-    next_cpy: usize,
-    pending_cpy: bool,
+    next: usize,
+    grid_dim: Dimensions,
 }
 
-impl<P: ComputePipelineAbstract + Send + Sync + 'static> GPUCompute<P> {
-    pub fn new<C: Copy>(
+impl<A: GPUComputableAutomaton> GPUCompute<A>
+where
+    A::Cell: Transcoder,
+{
+    pub fn new(
         device: Arc<Device>,
         queue: Arc<Queue>,
-        pipe_info: PipelineInfo<P>,
-        push_constants: C,
+        pipe_info: PipelineInfo<A::Pipeline>,
+        push_constants: A::PushConstants,
         nb_nodes: usize,
-        dim: &Dimensions,
+        initial_grid: &Grid<A::Cell>,
     ) -> Self {
-        if nb_nodes == 0 {
+        if nb_nodes < 2 {
             panic!(ERR_NB_NODES)
         }
 
+        let dim = *initial_grid.dim();
         let total_size = dim.size() as usize;
-
         let mut gpu_bufs = Vec::with_capacity(nb_nodes);
         for _ in 0..nb_nodes {
             let q_family = vec![queue.family()];
@@ -62,51 +67,61 @@ impl<P: ComputePipelineAbstract + Send + Sync + 'static> GPUCompute<P> {
                     i + 1
                 }
             };
-            nodes.push(ComputeNode::new(
+            nodes.push(ComputeNode::new::<A>(
                 Arc::clone(&device),
                 Arc::clone(&queue),
                 &pipe_info,
                 Arc::clone(&gpu_bufs[i]),
                 Arc::clone(&gpu_bufs[j]),
                 push_constants,
-                dim,
+                &dim,
             ))
         }
 
-        Self {
+        // Call reset with the initial grid before returning
+        let mut compute = Self {
             device,
             queue,
             pipe_info,
             gpu_bufs,
             nodes,
-            next_exe: 0,
-            next_cpy: 0,
-            pending_cpy: false,
-        }
+            next: 0,
+            grid_dim: dim,
+        };
+        compute.reset(initial_grid);
+        compute
     }
 
-    pub fn dispatch<A: GPUComputableAutomaton>(
+    pub fn dispatch(
         mut self,
         rx_op: Receiver<ComputeOP<A>>,
         tx_data: Sender<GridHistoryOP<A::Cell>>,
-    ) where
-        A::Cell: Transcoder,
-    {
-        // @TODO implement this !
+    ) {
+        loop {
+            match rx_op.recv() {
+                Ok(op) => match op {
+                    ComputeOP::Reset(grid) => self.reset(&grid),
+                    ComputeOP::Run(nb_gens) => {
+                        if !self.run(nb_gens, &tx_data) {
+                            break; // A send operation failed, we must terminate ourself
+                        }
+                    }
+                },
+                Err(_) => break, // Sender died, time to die
+            }
+        }
     }
 
-    fn reset(&mut self, data: Vec<u32>) {
-        // Reset pointers
-        self.next_exe = 0;
-        self.next_cpy = 0;
-        self.pending_cpy = false;
+    fn reset(&mut self, initial_grid: &Grid<A::Cell>) {
+        // Reset pointer
+        self.next = 0;
 
         // Put data in first GPU buffer
         let cpu_buf = CpuAccessibleBuffer::from_iter(
             self.device.clone(),
             BufferUsage::transfer_source(),
             false,
-            data.into_iter(),
+            initial_grid.encode().into_iter(),
         )
         .unwrap();
         let cmd = AutoCommandBufferBuilder::primary_one_time_submit(
@@ -127,65 +142,103 @@ impl<P: ComputePipelineAbstract + Send + Sync + 'static> GPUCompute<P> {
             .unwrap();
     }
 
-    fn run(&mut self, nb_gens: usize, tx_data: &Sender<Vec<Arc<CpuAccessibleBuffer<[u32]>>>>) {
+    fn run(&mut self, nb_gens: usize, tx_data: &Sender<GridHistoryOP<A::Cell>>) -> bool {
+        
         // Total number of compute nodes
         let nb_nodes = self.nodes.len();
+
+        let wrap_ptr = |ptr| {
+            if ptr == nb_nodes - 1 {
+                0
+            } else {
+                ptr + 1
+            }
+        };
+
+        let min = |a, b| {
+            if a < b {
+                a
+            } else {
+                b
+            }
+        };
+
+        let now_future = |device| Box::new(sync::now(device)) as Box<dyn GpuFuture>;
+
+        let wait_for_future = |future: Box<dyn GpuFuture>| {
+            future
+                .then_signal_fence_and_flush()
+                .unwrap()
+                .wait(None)
+                .unwrap()
+        };
 
         // Countdown on number of generations that must still be computed
         let mut gens_to_compute = nb_gens;
 
-        while gens_to_compute > 0 {
-            // Returns the number of compute nodes available
-            let check_available_ressources = || {
-                if !self.pending_cpy {
-                    nb_nodes
-                } else if self.next_cpy < self.next_exe {
-                    nb_nodes - self.next_exe + self.next_cpy
-                } else {
-                    self.next_cpy - self.next_exe
-                }
-            };
+        // Number of execution futures chained together
+        let mut launch_cnt = min(nb_nodes, gens_to_compute);
 
-            let mut nb_available = check_available_ressources();
-            while nb_available == 0 {
-                // @TODO: do something here
-                nb_available = check_available_ressources();
-            }
+        // Update next pointer for further calls to run()
+        let start_node = self.next;
+        self.next = (self.next + gens_to_compute) % nb_nodes;
 
-            // We have some computing nodes available, launch computations on those
-            let launch_cnt = {
-                if nb_available < gens_to_compute {
-                    nb_available
-                } else {
-                    gens_to_compute
-                }
-            };
+        // Launch command buffers
+        let mut next_exe_node = start_node;
+        let mut exe_future = now_future(Arc::clone(&self.device));
+        for _i in 0..launch_cnt {
+            exe_future = Box::new(self.nodes[next_exe_node].exe(exe_future));
+            next_exe_node = wrap_ptr(next_exe_node)
+        }
+        wait_for_future(exe_future);
 
-            // Launch command buffers
-            let mut compute_future = Box::new(sync::now(self.device.clone())) as Box<dyn GpuFuture>;
+        loop {
+            // Tell all compute nodes to bring back data to CPU
+            let mut next_cpy_node = start_node;
+            let mut cpy_futures = VecDeque::with_capacity(launch_cnt);
             for _i in 0..launch_cnt {
-                // Chain futures
-                compute_future = Box::new(self.nodes[self.next_exe].exe(compute_future));
+                cpy_futures.push_back((self.nodes[next_cpy_node].cpy(), next_cpy_node));
+                next_cpy_node = wrap_ptr(next_cpy_node);
+            }
 
-                // Increment pointer to next execution units
-                self.next_exe = {
-                    if self.next_exe == nb_nodes - 1 {
-                        0
-                    } else {
-                        self.next_exe + 1
+            // Update counters and reset exe future
+            gens_to_compute -= launch_cnt;
+            launch_cnt = min(nb_nodes, gens_to_compute);
+            let mut exe_future = now_future(Arc::clone(&self.device));
+
+            // Start reading back data and re-launch computations as needed
+            let mut left_to_exe = launch_cnt;
+            loop {
+                match cpy_futures.pop_front() {
+                    Some((future, idx)) => {
+                        // Wait for the copy operation to complete
+                        future
+                            .then_signal_fence_and_flush()
+                            .unwrap()
+                            .wait(None)
+                            .unwrap();
+
+                        // This node is available for compute again
+                        if left_to_exe > 0 {
+                            exe_future = Box::new(self.nodes[idx].exe(exe_future));
+                            left_to_exe -= 1;
+                        }
+
+                        // Transform raw data into Grid and send to GridHistory
+                        let encoded = Arc::clone(&self.nodes[idx].cpu_out);
+                        let grid = Grid::decode(encoded, &self.grid_dim);
+                        if let Err(_) = tx_data.send(GridHistoryOP::Push(grid)) {
+                            return false;
+                        }
                     }
+                    None => break, // All copies fetched, leave the inner loop
                 }
             }
 
-            compute_future
-                .then_signal_fence_and_flush()
-                .unwrap()
-                .wait(None)
-                .unwrap();
-
-            gens_to_compute -= launch_cnt;
-
-            // @TODO finish implementing this !
+            if launch_cnt == 0 {
+                return true;
+            }
+            wait_for_future(exe_future);
         }
     }
 }
@@ -199,15 +252,18 @@ struct ComputeNode {
 }
 
 impl ComputeNode {
-    fn new<T: ComputePipelineAbstract + Send + Sync + 'static, C>(
+    fn new<A: GPUComputableAutomaton>(
         device: Arc<Device>,
         queue: Arc<Queue>,
-        pipe_info: &PipelineInfo<T>,
+        pipe_info: &PipelineInfo<A::Pipeline>,
         gpu_src: Arc<DeviceLocalBuffer<[u32]>>,
         gpu_dst: Arc<DeviceLocalBuffer<[u32]>>,
-        push_constants: C,
+        push_constants: A::PushConstants,
         dim: &Dimensions,
-    ) -> Self {
+    ) -> Self
+    where
+        A::Cell: Transcoder,
+    {
         let cpu_out = unsafe {
             CpuAccessibleBuffer::uninitialized_array(
                 device.clone(),
@@ -274,12 +330,12 @@ impl ComputeNode {
 }
 
 pub struct CPUCompute<A: CPUComputableAutomaton> {
-    grid: Option<Grid<A::Cell>>,
+    grid: Grid<A::Cell>,
 }
 
 impl<A: CPUComputableAutomaton> CPUCompute<A> {
-    pub fn new() -> Self {
-        Self { grid: None }
+    pub fn new(initial_grid: Grid<A::Cell>) -> Self {
+        Self { grid: initial_grid }
     }
 
     pub fn dispatch(
@@ -290,20 +346,17 @@ impl<A: CPUComputableAutomaton> CPUCompute<A> {
         loop {
             match rx_op.recv() {
                 Ok(op) => match op {
-                    ComputeOP::Reset(grid) => self.grid = Some(grid),
-                    ComputeOP::Run(nb_gens) => match self.grid {
-                        Some(start_grid) => {
-                            let mut grid = start_grid;
-                            for _i in 0..nb_gens {
-                                grid = A::update_grid(&grid);
-                                if let Err(_) = tx_data.send(GridHistoryOP::Push(grid.clone())) {
-                                    break;
-                                }
+                    ComputeOP::Reset(grid) => self.grid = grid,
+                    ComputeOP::Run(nb_gens) => {
+                        let mut grid = self.grid;
+                        for _i in 0..nb_gens {
+                            grid = A::update_grid(&grid);
+                            if let Err(_) = tx_data.send(GridHistoryOP::Push(grid.clone())) {
+                                break;
                             }
-                            self.grid = Some(grid);
                         }
-                        None => panic!(ERR_UNINITIALIZED),
-                    },
+                        self.grid = grid;
+                    }
                 },
                 Err(_) => break, // Sender died, time to die
             }
@@ -311,6 +364,4 @@ impl<A: CPUComputableAutomaton> CPUCompute<A> {
     }
 }
 
-const ERR_NB_NODES: &str = "The number of compute nodes must be strictly positive.";
-const ERR_UNINITIALIZED: &str =
-    "A \"ComputeOP::Reset\" operation needs to happen before any \"ComputeOP::Run\" operation.";
+const ERR_NB_NODES: &str = "The number of compute nodes must be at least 2.";
