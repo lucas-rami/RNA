@@ -1,6 +1,7 @@
 // CELL
 mod simulator;
 mod compute;
+mod twoway_channel;
 pub use simulator::Simulator;
 use compute::{CPUCompute, GPUCompute};
 
