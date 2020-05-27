@@ -7,7 +7,7 @@ use vulkano::device::{Device, DeviceExtensions};
 use vulkano::instance::{Instance, PhysicalDevice};
 
 // CELL
-use super::advanced_channels::{self, MasterEndpoint, SimpleSender};
+use crate::advanced_channels::{self, MasterEndpoint, SimpleSender};
 use super::compute::{CPUCompute, GPUCompute};
 use crate::automaton::{
     CPUComputableAutomaton, CellularAutomaton, GPUComputableAutomaton, Transcoder,

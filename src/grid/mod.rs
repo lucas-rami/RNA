@@ -158,7 +158,7 @@ pub const NEUMANN_NEIGHBORHOOD: [RelCoords; 4] = [TOP, RIGHT, BOTTOM, LEFT];
 mod tests {
 
     use super::*;
-    use crate::simulator::advanced_channels;
+    use crate::advanced_channels;
 
     #[test]
     fn history_get_checkpoint() {

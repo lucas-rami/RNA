@@ -9,6 +9,7 @@ mod grid;
 mod heat_dispersion;
 mod simulator;
 mod terminal_ui;
+mod advanced_channels;
 use game_of_life::GameOfLife;
 use simulator::Simulator;
 use terminal_ui::TerminalUI;

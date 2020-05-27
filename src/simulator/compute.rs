@@ -14,7 +14,7 @@ use vulkano::sync::{self, GpuFuture, NowFuture};
 
 // CELL
 use super::simulator::ComputeOP;
-use super::advanced_channels::{SimpleReceiver, ThirdPartySender};
+use crate::advanced_channels::{SimpleReceiver, ThirdPartySender};
 use crate::automaton::{CPUComputableAutomaton, GPUComputableAutomaton, PipelineInfo, Transcoder};
 use crate::grid::{Dimensions, Grid, GridHistoryOP};
 

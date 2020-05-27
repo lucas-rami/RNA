@@ -4,7 +4,7 @@ use std::fmt::Debug;
 
 // CELL
 use super::{Grid, Position, PositionIterator};
-use crate::simulator::advanced_channels::{MailType, SlaveEndpoint};
+use crate::advanced_channels::{MailType, SlaveEndpoint};
 
 pub struct GridHistory<T: Copy + Debug + Default + Eq + PartialEq> {
     diffs: Vec<GridDiff<T>>,

@@ -1,7 +1,6 @@
 // CELL
 mod simulator;
 mod compute;
-pub mod advanced_channels;
 pub use simulator::Simulator;
 
 #[cfg(test)]
