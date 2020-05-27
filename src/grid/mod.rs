@@ -158,7 +158,7 @@ pub const NEUMANN_NEIGHBORHOOD: [RelCoords; 4] = [TOP, RIGHT, BOTTOM, LEFT];
 mod tests {
 
     use super::*;
-    use std::sync::mpsc::{channel, Receiver, Sender};
+    use crate::simulator::advanced_channels;
 
     #[test]
     fn history_get_checkpoint() {
@@ -187,81 +187,56 @@ mod tests {
     #[test]
     fn history_dispatch_block() {
         let history = start_history(0, 10);
-        let (tx_op, rx_op) = channel();
-        let (tx_data, rx_data) = channel();
-
-        let tx_op_comp = tx_op.clone();
-        std::thread::spawn(move || history.dispatch(rx_op, tx_data));
+        let (grid_master, grid_slave) = advanced_channels::twoway_channel();
+        let grid_thrid_party = grid_master.create_third_party();
+        std::thread::spawn(move || history.dispatch(grid_slave));
         std::thread::spawn(move || {
             for i in 1..5 {
-                tx_op_comp.send(GridHistoryOP::Push(create_gen(i))).unwrap();
+                grid_thrid_party.send(GridHistoryOP::Push(create_gen(i)));
             }
         });
 
         let gens = vec![0, 1, 2, 3, 4];
         for gen in gens {
-            tx_op
-                .send(GridHistoryOP::GetGen {
-                    gen,
-                    blocking: true,
-                })
-                .unwrap();
-            assert_eq!(create_gen(gen), rx_data.recv().unwrap().unwrap());
+            let received_grid = grid_master.send_and_wait_for_response(GridHistoryOP::GetGen {
+                gen,
+                blocking: true,
+            }).unwrap();
+            assert_eq!(create_gen(gen), received_grid);
         }
     }
 
     #[test]
     fn history_dispatch() {
         let history = start_history(0, 0);
-        let (tx_op, rx_op) = channel();
-        let (tx_data, rx_data) = channel();
+        let (grid_master, grid_slave) = advanced_channels::twoway_channel();
 
-        std::thread::spawn(move || history.dispatch(rx_op, tx_data));
+        std::thread::spawn(move || history.dispatch(grid_slave));
 
         // Initial generation should be available immediately
-        tx_op
-            .send(GridHistoryOP::GetGen {
-                gen: 0,
-                blocking: false,
-            })
-            .unwrap();
-        assert_eq!(create_gen(0), rx_data.recv().unwrap().unwrap());
+        let received_grid = grid_master.send_and_wait_for_response(GridHistoryOP::GetGen {
+            gen: 0,
+            blocking: false,
+        }).unwrap();
+        assert_eq!(create_gen(0), received_grid);
 
         // Generation 1 shouldn't be available
-        tx_op
-            .send(GridHistoryOP::GetGen {
-                gen: 1,
-                blocking: false,
-            })
-            .unwrap();
-        if let Some(_) = rx_data.recv().unwrap() {
+        let received_grid = grid_master.send_and_wait_for_response(GridHistoryOP::GetGen {
+            gen: 1,
+            blocking: false,
+        });
+        if let Some(_) = received_grid {
             panic!("Generation 1 shouldn't be available.")
         }
 
         // Pushing generation 1 and retrieving it should be possible
-        tx_op.send(GridHistoryOP::Push(create_gen(1))).unwrap();
-        tx_op
-            .send(GridHistoryOP::GetGen {
-                gen: 1,
-                blocking: true,
-            })
-            .unwrap();
-        if let Some(grid) = rx_data.recv().unwrap() {
+        grid_master.send(GridHistoryOP::Push(create_gen(1)));
+        let received_grid = grid_master.send_and_wait_for_response(GridHistoryOP::GetGen {
+            gen: 1,
+            blocking: true,
+        });
+        if let Some(grid) = received_grid {
             assert_eq!(grid, create_gen(1));
-        }
-
-        // Generation 10 should be available at a later time if we push enough updates
-        tx_op
-            .send(GridHistoryOP::GetGen {
-                gen: 10,
-                blocking: true,
-            })
-            .unwrap();
-        for i in 2..20 {
-            tx_op.send(GridHistoryOP::Push(create_gen(i))).unwrap();
-        }
-        if let Some(grid) = rx_data.recv().unwrap() {
-            assert_eq!(grid, create_gen(10));
         }
     }
 

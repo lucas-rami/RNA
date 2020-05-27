@@ -1,8 +1,5 @@
 // Standard library
-use std::sync::{
-    mpsc::{self, Receiver, Sender},
-    Arc,
-};
+use std::sync::Arc;
 use std::thread;
 
 // External libraries
@@ -10,7 +7,8 @@ use vulkano::device::{Device, DeviceExtensions};
 use vulkano::instance::{Instance, PhysicalDevice};
 
 // CELL
-use super::{CPUCompute, GPUCompute};
+use super::advanced_channels::{self, MasterEndpoint, SimpleSender};
+use super::compute::{CPUCompute, GPUCompute};
 use crate::automaton::{
     CPUComputableAutomaton, CellularAutomaton, GPUComputableAutomaton, Transcoder,
 };
@@ -20,9 +18,8 @@ pub struct Simulator<A: CellularAutomaton> {
     name: String,
     automaton: A,
     max_gen: usize,
-    tx_comp_op: Sender<ComputeOP<A>>,
-    tx_grid_op: Sender<GridHistoryOP<A::Cell>>,
-    rx_data: Receiver<Option<Grid<A::Cell>>>,
+    grid_manager: MasterEndpoint<GridHistoryOP<A::Cell>, Option<Grid<A::Cell>>>,
+    compute_manager: SimpleSender<ComputeOP<A>>,
 }
 
 impl<A: CellularAutomaton> Simulator<A> {
@@ -39,9 +36,7 @@ impl<A: CellularAutomaton> Simulator<A> {
     }
 
     pub fn run(&mut self, nb_gens: usize) {
-        self.tx_comp_op
-            .send(ComputeOP::Run(nb_gens))
-            .expect(ERR_DEAD_CPU_COMPUTE);
+        self.compute_manager.send(ComputeOP::Run(nb_gens));
         self.max_gen += nb_gens;
     }
 
@@ -60,43 +55,37 @@ impl<A: CellularAutomaton> Simulator<A> {
             }
         }
 
-        self.tx_grid_op
-            .send(GridHistoryOP::GetGen {
+        self.grid_manager
+            .send_and_wait_for_response(GridHistoryOP::GetGen {
                 gen,
                 blocking: true,
             })
-            .expect(ERR_DEAD_GRID_HISTORY);
-        self.rx_data.recv().expect(ERR_DEAD_GRID_HISTORY)
     }
 }
 
 impl<A: CPUComputableAutomaton> Simulator<A> {
     pub fn new_cpu_sim(name: &str, automaton: A, grid: &Grid<A::Cell>) -> Self {
         // Create communication channels
-        let (tx_comp_op, rx_comp_op) = mpsc::channel();
-        let (tx_grid_op, rx_grid_op) = mpsc::channel();
-        let (tx_data, rx_data) = mpsc::channel();
+        let (grid_master, grid_slave) = advanced_channels::twoway_channel();
+        let (compute_sender, compute_receiver) = advanced_channels::oneway_channel();
 
         // Dispatch a CPUCompute thread and GridHistory thread
         let compute = CPUCompute::new(grid.clone());
         let history = GridHistory::new(&grid, 10);
-        let tx_grid_op_compute = tx_grid_op.clone();
-        thread::spawn(move || compute.dispatch(rx_comp_op, tx_grid_op_compute));
-        thread::spawn(move || history.dispatch(rx_grid_op, tx_data));
+        let grid_third_party = grid_master.create_third_party();
+        thread::spawn(move || compute.dispatch(compute_receiver, grid_third_party));
+        thread::spawn(move || history.dispatch(grid_slave));
 
         // Send a Reset signal to the compute thread to initialize the grid
-        tx_comp_op
-            .send(ComputeOP::Reset(grid.clone()))
-            .expect(ERR_DEAD_CPU_COMPUTE);
+        compute_sender.send(ComputeOP::Reset(grid.clone()));
 
         // Create the simulator
         Self {
             name: String::from(name),
             automaton,
             max_gen: 0,
-            tx_comp_op,
-            tx_grid_op,
-            rx_data,
+            grid_manager: grid_master,
+            compute_manager: compute_sender,
         }
     }
 }
@@ -138,29 +127,25 @@ where
         };
 
         // Create communication channels
-        let (tx_comp_op, rx_comp_op) = mpsc::channel();
-        let (tx_grid_op, rx_grid_op) = mpsc::channel();
-        let (tx_data, rx_data) = mpsc::channel();
+        let (grid_master, grid_slave) = advanced_channels::twoway_channel();
+        let (compute_sender, compute_receiver) = advanced_channels::oneway_channel();
 
         // Dispatch a GPUCompute thread and GridHistory thread
         let history = GridHistory::new(&grid, 10);
-        let tx_grid_op_compute = tx_grid_op.clone();
-        thread::spawn(move || compute.dispatch(rx_comp_op, tx_grid_op_compute));
-        thread::spawn(move || history.dispatch(rx_grid_op, tx_data));
+        let grid_third_party = grid_master.create_third_party();
+        thread::spawn(move || compute.dispatch(compute_receiver, grid_third_party));
+        thread::spawn(move || history.dispatch(grid_slave));
 
         // Send a Reset signal to the compute thread to initialize the grid
-        tx_comp_op
-            .send(ComputeOP::Reset(grid.clone()))
-            .expect(ERR_DEAD_GPU_COMPUTE);
+        compute_sender.send(ComputeOP::Reset(grid.clone()));
 
         // Create the simulator
         Self {
             name: String::from(name),
             automaton,
             max_gen: 0,
-            tx_comp_op,
-            tx_grid_op,
-            rx_data,
+            grid_manager: grid_master,
+            compute_manager: compute_sender,
         }
     }
 }
@@ -169,7 +154,3 @@ pub enum ComputeOP<A: CellularAutomaton> {
     Reset(Grid<A::Cell>),
     Run(usize),
 }
-
-const ERR_DEAD_CPU_COMPUTE: &str = "The CPUCompute thread terminated unexpectedly.";
-const ERR_DEAD_GPU_COMPUTE: &str = "The GPUCompute thread terminated unexpectedly.";
-const ERR_DEAD_GRID_HISTORY: &str = "The GridHistory thread terminated unexpectedly.";

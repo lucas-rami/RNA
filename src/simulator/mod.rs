@@ -1,9 +1,8 @@
 // CELL
 mod simulator;
 mod compute;
-mod twoway_channel;
+pub mod advanced_channels;
 pub use simulator::Simulator;
-use compute::{CPUCompute, GPUCompute};
 
 #[cfg(test)]
 mod tests {

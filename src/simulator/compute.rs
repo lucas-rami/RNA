@@ -1,10 +1,7 @@
 // Standard library
 use std::collections::VecDeque;
 use std::marker::PhantomData;
-use std::sync::{
-    mpsc::{Receiver, Sender},
-    Arc,
-};
+use std::sync::Arc;
 
 // External libraries
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, DeviceLocalBuffer};
@@ -17,6 +14,7 @@ use vulkano::sync::{self, GpuFuture, NowFuture};
 
 // CELL
 use super::simulator::ComputeOP;
+use super::advanced_channels::{SimpleReceiver, ThirdPartySender};
 use crate::automaton::{CPUComputableAutomaton, GPUComputableAutomaton, PipelineInfo, Transcoder};
 use crate::grid::{Dimensions, Grid, GridHistoryOP};
 
@@ -101,15 +99,15 @@ where
 
     pub fn dispatch(
         mut self,
-        rx_op: Receiver<ComputeOP<A>>,
-        tx_data: Sender<GridHistoryOP<A::Cell>>,
+        op_receiver: SimpleReceiver<ComputeOP<A>>,
+        data_sender: ThirdPartySender<GridHistoryOP<A::Cell>>,
     ) {
         loop {
-            match rx_op.recv() {
+            match op_receiver.wait_for_mail() {
                 Ok(op) => match op {
                     ComputeOP::Reset(grid) => self.reset(&grid),
                     ComputeOP::Run(nb_gens) => {
-                        if !self.run(nb_gens, &tx_data) {
+                        if !self.run(nb_gens, &data_sender) {
                             break; // A send operation failed, we must terminate ourself
                         }
                     }
@@ -149,7 +147,7 @@ where
             .unwrap();
     }
 
-    fn run(&mut self, nb_gens: usize, tx_data: &Sender<GridHistoryOP<A::Cell>>) -> bool {
+    fn run(&mut self, nb_gens: usize, data_sender: &ThirdPartySender<GridHistoryOP<A::Cell>>) -> bool {
         // Total number of compute nodes
         let nb_nodes = self.nodes.len();
 
@@ -233,7 +231,7 @@ where
                         // Transform raw data into Grid and send to GridHistory
                         let encoded = Arc::clone(&self.nodes[idx].cpu_out);
                         let grid = Grid::decode(encoded, &self.grid_dim);
-                        if let Err(_) = tx_data.send(GridHistoryOP::Push(grid)) {
+                        if !data_sender.send(GridHistoryOP::Push(grid)) {
                             return false;
                         }
                     }
@@ -346,18 +344,18 @@ impl<A: CPUComputableAutomaton> CPUCompute<A> {
 
     pub fn dispatch(
         mut self,
-        rx_op: Receiver<ComputeOP<A>>,
-        tx_data: Sender<GridHistoryOP<A::Cell>>,
+        op_receiver: SimpleReceiver<ComputeOP<A>>,
+        data_sender: ThirdPartySender<GridHistoryOP<A::Cell>>,
     ) {
         loop {
-            match rx_op.recv() {
+            match op_receiver.wait_for_mail() {
                 Ok(op) => match op {
                     ComputeOP::Reset(grid) => self.grid = grid,
                     ComputeOP::Run(nb_gens) => {
                         let mut grid = self.grid;
                         for _i in 0..nb_gens {
                             grid = A::update_grid(&grid);
-                            if let Err(_) = tx_data.send(GridHistoryOP::Push(grid.clone())) {
+                            if !data_sender.send(GridHistoryOP::Push(grid.clone())) {
                                 break;
                             }
                         }

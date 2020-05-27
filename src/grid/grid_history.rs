@@ -1,10 +1,10 @@
 // Standard library
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::sync::mpsc::{Receiver, Sender};
 
 // CELL
 use super::{Grid, Position, PositionIterator};
+use crate::simulator::advanced_channels::{MailType, SlaveEndpoint};
 
 pub struct GridHistory<T: Copy + Debug + Default + Eq + PartialEq> {
     diffs: Vec<GridDiff<T>>,
@@ -69,41 +69,40 @@ impl<T: Copy + Debug + Default + Eq + PartialEq> GridHistory<T> {
         }
     }
 
-    pub fn dispatch(mut self, rx_op: Receiver<GridHistoryOP<T>>, tx_data: Sender<Option<Grid<T>>>) {
-        let mut registered = None;
-
+    pub fn dispatch(mut self, endpoint: SlaveEndpoint<Option<Grid<T>>, GridHistoryOP<T>>) {
         loop {
-            match rx_op.recv() {
-                Ok(op) => match op {
-                    GridHistoryOP::Push(grid) => {
-                        self.push(grid);
-                        if let Some(gen) = registered {
-                            if let Some(tx_grid) = self.get_gen(gen) {
-                                registered = None;
-                                if let Err(_) = tx_data.send(Some(tx_grid)) {
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    GridHistoryOP::GetGen { gen, blocking } => match self.get_gen(gen) {
+            match endpoint.wait_for_mail() {
+                MailType::SimpleMsg(msg) => match msg {
+                    GridHistoryOP::Push(grid) => self.push(grid),
+                    _ => panic!(ERR_INCOMPATIBLE_MAIL_TYPE),
+                },
+                MailType::ResponseRequired(req) => match req.get_request() {
+                    GridHistoryOP::GetGen { gen, blocking } => match self.get_gen(*gen) {
                         Some(grid) => {
-                            if let Err(_) = tx_data.send(Some(grid)) {
-                                break;
-                            }
+                            req.respond(Some(grid));
                         }
                         None => {
-                            if blocking {
-                                registered = Some(gen);
-                            } else {
-                                if let Err(_) = tx_data.send(None) {
-                                    break;
+                            if *blocking {
+                                loop {
+                                    match endpoint.wait_for_simple_msg() {
+                                        GridHistoryOP::Push(grid) => {
+                                            self.push(grid);
+                                            if let Some(response_grid) = self.get_gen(*gen) {
+                                                req.respond(Some(response_grid));
+                                                break;
+                                            }
+                                        }
+                                        _ => panic!(ERR_INCOMPATIBLE_MAIL_TYPE),
+                                    }
                                 }
+                            } else {
+                                req.respond(None);
                             }
                         }
-                    }
+                    },
+                    _ => panic!(ERR_INCOMPATIBLE_MAIL_TYPE),
                 },
-                Err(_) => break, // All senders died, time to die
+                MailType::DeadChannel => break,
             }
         }
     }
@@ -173,3 +172,6 @@ pub enum GridHistoryOP<T: Copy + Default + Eq + PartialEq> {
     Push(Grid<T>),
     GetGen { gen: usize, blocking: bool },
 }
+
+const ERR_INCOMPATIBLE_MAIL_TYPE: &str =
+    "The received GridHistoryOP is incompatible with the MailType it's included in.";
