@@ -5,30 +5,10 @@ use crossterm::style::{style, Attribute, Color, StyledContent};
 use crate::automaton::*;
 use crate::grid::{Dimensions, Grid, GridView, Position, MOORE_NEIGHBORHOOD};
 
-pub struct HeatDispersion {
-    name: &'static str,
-}
+impl Cell for u8 {}
 
-impl HeatDispersion {
-    pub fn new() -> Self {
-        Self {
-            name: "Heat Dispersion",
-        }
-    }
-}
-
-impl CellularAutomaton for HeatDispersion {
-    type Cell = u8;
-
-    fn name(&self) -> &str {
-        self.name
-    }
-}
-
-impl CellType for u8 {}
-
-impl CPUComputableAutomaton for HeatDispersion {
-    fn update_cell<'a>(grid: &GridView<'a, Self::Cell>) -> Self::Cell {
+impl UpdateCPU for u8 {
+    fn update_cell<'a>(grid: &GridView<'a, Self>) -> Self {
         let total_heat = grid
             .get_relative_mul(&MOORE_NEIGHBORHOOD)
             .iter()
@@ -43,13 +23,13 @@ impl CPUComputableAutomaton for HeatDispersion {
     }
 }
 
-impl TermDrawableAutomaton for HeatDispersion {
-    fn style(&self, state: &Self::Cell) -> StyledContent<char> {
+impl TermDrawableAutomaton for u8 {
+    fn style(&self) -> StyledContent<char> {
         style('#')
             .with(Color::Rgb {
-                r: *state,
+                r: *self,
                 g: 0u8,
-                b: 255 - *state,
+                b: 255 - *self,
             })
             .attribute(Attribute::Bold)
     }

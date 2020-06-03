@@ -58,7 +58,7 @@ impl<A: TermDrawableAutomaton> TerminalUI<A> {
         };
 
         // Set simulator title and draw initial state
-        let title = StyledText::from(vec![style(String::from(ui.simulator.name()))]);
+        let title = StyledText::from(vec![style(String::from(ui.simulator.automaton().name()))]);
         ui.auto_mod.set_title(title);
         ui.draw_automaton(0);
         ui
@@ -330,7 +330,7 @@ impl<A: TermDrawableAutomaton> TerminalUI<A> {
             .expect("Failed to move cursor.");
             for x in 0..render_size.0 {
                 let state = grid.get(Position::new(self.view.0 + x, row));
-                let c = self.simulator.automaton().style(&state);
+                let c = state.style();
                 queue!(stdout, PrintStyledContent(c)).expect("Failed to display simulator");
             }
             // Next row

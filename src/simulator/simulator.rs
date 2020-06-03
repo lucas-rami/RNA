@@ -7,27 +7,20 @@ use vulkano::device::{Device, DeviceExtensions};
 use vulkano::instance::{Instance, PhysicalDevice};
 
 // CELL
-use crate::advanced_channels::{self, MasterEndpoint, SimpleSender};
 use super::compute::{CPUCompute, GPUCompute};
-use crate::automaton::{
-    CPUComputableAutomaton, CellularAutomaton, GPUComputableAutomaton, Transcoder,
-};
+use crate::advanced_channels::{self, MasterEndpoint, SimpleSender};
+use crate::automaton::{Cell, CellularAutomaton, UpdateCPU, UpdateGPU};
 use crate::grid::{Grid, GridHistory, GridHistoryOP};
 
-pub struct Simulator<A: CellularAutomaton> {
-    name: String,
-    automaton: A,
+pub struct Simulator<C: Cell> {
+    automaton: CellularAutomaton<C>,
     max_gen: usize,
-    grid_manager: MasterEndpoint<GridHistoryOP<A::Cell>, Option<Grid<A::Cell>>>,
-    compute_manager: SimpleSender<ComputeOP<A>>,
+    grid_manager: MasterEndpoint<GridHistoryOP<C>, Option<Grid<C>>>,
+    compute_manager: SimpleSender<ComputeOP<C>>,
 }
 
-impl<A: CellularAutomaton> Simulator<A> {
-    pub fn name(&self) -> &str {
-        &self.name[..]
-    }
-
-    pub fn automaton(&self) -> &A {
+impl<C: Cell> Simulator<C> {
+    pub fn automaton(&self) -> &CellularAutomaton<C> {
         &self.automaton
     }
 
@@ -46,7 +39,7 @@ impl<A: CellularAutomaton> Simulator<A> {
         }
     }
 
-    pub fn get_gen(&mut self, gen: usize, run_to: bool) -> Option<Grid<A::Cell>> {
+    pub fn get_gen(&mut self, gen: usize, run_to: bool) -> Option<Grid<C>> {
         if self.max_gen < gen {
             if run_to {
                 self.run(gen - self.max_gen);
@@ -63,8 +56,8 @@ impl<A: CellularAutomaton> Simulator<A> {
     }
 }
 
-impl<A: CPUComputableAutomaton> Simulator<A> {
-    pub fn new_cpu_sim(name: &str, automaton: A, grid: &Grid<A::Cell>) -> Self {
+impl<C: UpdateCPU> Simulator<C> {
+    pub fn new_cpu_sim(automaton: CellularAutomaton<C>, grid: &Grid<C>) -> Self {
         // Create communication channels
         let (grid_master, grid_slave) = advanced_channels::twoway_channel();
         let (compute_sender, compute_receiver) = advanced_channels::oneway_channel();
@@ -81,7 +74,6 @@ impl<A: CPUComputableAutomaton> Simulator<A> {
 
         // Create the simulator
         Self {
-            name: String::from(name),
             automaton,
             max_gen: 0,
             grid_manager: grid_master,
@@ -90,14 +82,10 @@ impl<A: CPUComputableAutomaton> Simulator<A> {
     }
 }
 
-impl<A: GPUComputableAutomaton> Simulator<A>
-where
-    A::Cell: Transcoder,
-{
+impl<C: UpdateGPU> Simulator<C> {
     pub fn new_gpu_sim(
-        name: &str,
-        automaton: A,
-        grid: &Grid<A::Cell>,
+        automaton: CellularAutomaton<C>,
+        grid: &Grid<C>,
         instance: Arc<Instance>,
     ) -> Self {
         // Create GPUCompute struct
@@ -141,7 +129,6 @@ where
 
         // Create the simulator
         Self {
-            name: String::from(name),
             automaton,
             max_gen: 0,
             grid_manager: grid_master,
@@ -150,7 +137,7 @@ where
     }
 }
 
-pub enum ComputeOP<A: CellularAutomaton> {
-    Reset(Grid<A::Cell>),
+pub enum ComputeOP<C: Cell> {
+    Reset(Grid<C>),
     Run(usize),
 }

@@ -1,5 +1,4 @@
 // Standard library
-use std::collections::HashMap;
 use std::sync::Arc;
 
 // External libraries
@@ -10,60 +9,48 @@ use vulkano::device::Device;
 use vulkano::pipeline::ComputePipeline;
 
 // CELL
-use crate::grid::{Dimensions, Grid, GridView, Position, MOORE_NEIGHBORHOOD};
 use crate::automaton::*;
+use crate::grid::{Dimensions, Grid, GridView, Position, MOORE_NEIGHBORHOOD};
 
 #[derive(Copy, Clone, Eq, PartialEq, std::hash::Hash, std::fmt::Debug)]
-pub enum States {
+pub enum GameOfLife {
     Dead,
     Alive,
 }
 
-impl Default for States {
+impl Default for GameOfLife {
     fn default() -> Self {
         Self::Dead
     }
 }
 
-impl CellType for States {}
+impl Cell for GameOfLife {}
 
-pub struct GameOfLife {
-    name: &'static str,
-    style_map: HashMap<States, StyledContent<char>>,
-}
+impl TranscodableCell for GameOfLife {
+    fn encode(&self) -> u32 {
+        match self {
+            GameOfLife::Dead => 0,
+            GameOfLife::Alive => 1,
+        }
+    }
 
-impl GameOfLife {
-    pub fn new() -> Self {
-        let mut style_map = HashMap::new();
-        style_map.insert(States::Dead, style('·').with(Color::Grey));
-        style_map.insert(
-            States::Alive,
-            style('#').with(Color::Green).attribute(Attribute::Bold),
-        );
-
-        Self {
-            name: "Conway's Game of pLife",
-            style_map,
+    fn decode(id: u32) -> Self {
+        match id {
+            0 => GameOfLife::Dead,
+            1 => GameOfLife::Alive,
+            _ => panic!(format!("Decoding failed: unkwnon encoding {}.", id)),
         }
     }
 }
 
-impl CellularAutomaton for GameOfLife {
-    type Cell = States;
-
-    fn name(&self) -> &str {
-        self.name
-    }
-}
-
-impl CPUComputableAutomaton for GameOfLife {
-    fn update_cell<'a>(grid: &GridView<'a, Self::Cell>) -> Self::Cell {
+impl UpdateCPU for GameOfLife {
+    fn update_cell<'a>(grid: &GridView<'a, Self>) -> Self {
         // Count the number of alive cells around us
         let nb_alive_neighbors =
             grid.get_relative_mul(&MOORE_NEIGHBORHOOD)
                 .iter()
                 .fold(0, |cnt, cell| {
-                    if let States::Alive = cell {
+                    if let GameOfLife::Alive = cell {
                         cnt + 1
                     } else {
                         cnt
@@ -72,42 +59,25 @@ impl CPUComputableAutomaton for GameOfLife {
 
         // Apply the evolution rule
         match grid.cell() {
-            States::Dead => {
+            GameOfLife::Dead => {
                 if nb_alive_neighbors == 3 {
-                    States::Alive
+                    GameOfLife::Alive
                 } else {
-                    States::Dead
+                    GameOfLife::Dead
                 }
             }
-            States::Alive => {
+            GameOfLife::Alive => {
                 if nb_alive_neighbors == 2 || nb_alive_neighbors == 3 {
-                    States::Alive
+                    GameOfLife::Alive
                 } else {
-                    States::Dead
+                    GameOfLife::Dead
                 }
             }
         }
     }
 }
 
-impl Transcoder for States {
-    fn encode(&self) -> u32 {
-        match self {
-            States::Dead => 0,
-            States::Alive => 1,
-        }
-    }
-
-    fn decode(id: u32) -> Self {
-        match id {
-            0 => States::Dead,
-            1 => States::Alive,
-            _ => panic!(format!("Decoding failed: unkwnon encoding {}.", id)),
-        }
-    }
-}
-
-impl GPUComputableAutomaton for GameOfLife {
+impl UpdateGPU for GameOfLife {
     type Pipeline = ComputePipeline<PipelineLayout<shader::Layout>>;
     type PushConstants = shader::ty::Dim;
 
@@ -122,7 +92,7 @@ impl GPUComputableAutomaton for GameOfLife {
         }
     }
 
-    fn push_constants(grid: &Grid<Self::Cell>) -> Self::PushConstants {
+    fn push_constants(grid: &Grid<Self>) -> Self::PushConstants {
         let dim = grid.dim();
         shader::ty::Dim {
             nb_rows: dim.height() as u32,
@@ -132,8 +102,11 @@ impl GPUComputableAutomaton for GameOfLife {
 }
 
 impl TermDrawableAutomaton for GameOfLife {
-    fn style(&self, state: &Self::Cell) -> StyledContent<char> {
-        self.style_map.get(state).unwrap().clone()
+    fn style(&self) -> StyledContent<char> {
+        match self {
+            GameOfLife::Dead => style('·').with(Color::Grey),
+            GameOfLife::Alive => style('#').with(Color::Green).attribute(Attribute::Bold),
+        }
     }
 }
 
@@ -144,59 +117,59 @@ mod shader {
     }
 }
 
-pub fn gosper_glider_gun() -> Grid<States> {
+pub fn gosper_glider_gun() -> Grid<GameOfLife> {
     let mut grid = Grid::new(Dimensions::new(100, 50));
     grid = cascade!(
         grid;
-        ..set(Position::new(1, 5), States::Alive);
-        ..set(Position::new(1, 6), States::Alive);
-        ..set(Position::new(2, 5), States::Alive);
-        ..set(Position::new(2, 6), States::Alive);
-        ..set(Position::new(11, 5), States::Alive);
-        ..set(Position::new(11, 6), States::Alive);
-        ..set(Position::new(11, 7), States::Alive);
-        ..set(Position::new(12, 4), States::Alive);
-        ..set(Position::new(12, 8), States::Alive);
-        ..set(Position::new(13, 3), States::Alive);
-        ..set(Position::new(13, 9), States::Alive);
-        ..set(Position::new(14, 3), States::Alive);
-        ..set(Position::new(14, 9), States::Alive);
-        ..set(Position::new(15, 6), States::Alive);
-        ..set(Position::new(16, 4), States::Alive);
-        ..set(Position::new(16, 8), States::Alive);
-        ..set(Position::new(17, 5), States::Alive);
-        ..set(Position::new(17, 6), States::Alive);
-        ..set(Position::new(17, 7), States::Alive);
-        ..set(Position::new(18, 6), States::Alive);
-        ..set(Position::new(21, 3), States::Alive);
-        ..set(Position::new(21, 4), States::Alive);
-        ..set(Position::new(21, 5), States::Alive);
-        ..set(Position::new(22, 3), States::Alive);
-        ..set(Position::new(22, 4), States::Alive);
-        ..set(Position::new(22, 5), States::Alive);
-        ..set(Position::new(23, 2), States::Alive);
-        ..set(Position::new(23, 6), States::Alive);
-        ..set(Position::new(25, 1), States::Alive);
-        ..set(Position::new(25, 2), States::Alive);
-        ..set(Position::new(25, 6), States::Alive);
-        ..set(Position::new(25, 7), States::Alive);
-        ..set(Position::new(35, 3), States::Alive);
-        ..set(Position::new(35, 4), States::Alive);
-        ..set(Position::new(36, 3), States::Alive);
-        ..set(Position::new(36, 4), States::Alive);
+        ..set(Position::new(1, 5), GameOfLife::Alive);
+        ..set(Position::new(1, 6), GameOfLife::Alive);
+        ..set(Position::new(2, 5), GameOfLife::Alive);
+        ..set(Position::new(2, 6), GameOfLife::Alive);
+        ..set(Position::new(11, 5), GameOfLife::Alive);
+        ..set(Position::new(11, 6), GameOfLife::Alive);
+        ..set(Position::new(11, 7), GameOfLife::Alive);
+        ..set(Position::new(12, 4), GameOfLife::Alive);
+        ..set(Position::new(12, 8), GameOfLife::Alive);
+        ..set(Position::new(13, 3), GameOfLife::Alive);
+        ..set(Position::new(13, 9), GameOfLife::Alive);
+        ..set(Position::new(14, 3), GameOfLife::Alive);
+        ..set(Position::new(14, 9), GameOfLife::Alive);
+        ..set(Position::new(15, 6), GameOfLife::Alive);
+        ..set(Position::new(16, 4), GameOfLife::Alive);
+        ..set(Position::new(16, 8), GameOfLife::Alive);
+        ..set(Position::new(17, 5), GameOfLife::Alive);
+        ..set(Position::new(17, 6), GameOfLife::Alive);
+        ..set(Position::new(17, 7), GameOfLife::Alive);
+        ..set(Position::new(18, 6), GameOfLife::Alive);
+        ..set(Position::new(21, 3), GameOfLife::Alive);
+        ..set(Position::new(21, 4), GameOfLife::Alive);
+        ..set(Position::new(21, 5), GameOfLife::Alive);
+        ..set(Position::new(22, 3), GameOfLife::Alive);
+        ..set(Position::new(22, 4), GameOfLife::Alive);
+        ..set(Position::new(22, 5), GameOfLife::Alive);
+        ..set(Position::new(23, 2), GameOfLife::Alive);
+        ..set(Position::new(23, 6), GameOfLife::Alive);
+        ..set(Position::new(25, 1), GameOfLife::Alive);
+        ..set(Position::new(25, 2), GameOfLife::Alive);
+        ..set(Position::new(25, 6), GameOfLife::Alive);
+        ..set(Position::new(25, 7), GameOfLife::Alive);
+        ..set(Position::new(35, 3), GameOfLife::Alive);
+        ..set(Position::new(35, 4), GameOfLife::Alive);
+        ..set(Position::new(36, 3), GameOfLife::Alive);
+        ..set(Position::new(36, 4), GameOfLife::Alive);
     );
     grid
 }
 
-pub fn r_pentomino() -> Grid<States> {
+pub fn r_pentomino() -> Grid<GameOfLife> {
     let mut grid = Grid::new(Dimensions::new(201, 201));
     grid = cascade!(
         grid;
-        ..set(Position::new(100, 99), States::Alive);
-        ..set(Position::new(101, 99), States::Alive);
-        ..set(Position::new(99, 100), States::Alive);
-        ..set(Position::new(100, 100), States::Alive);
-        ..set(Position::new(100, 101), States::Alive);
+        ..set(Position::new(100, 99), GameOfLife::Alive);
+        ..set(Position::new(101, 99), GameOfLife::Alive);
+        ..set(Position::new(99, 100), GameOfLife::Alive);
+        ..set(Position::new(100, 100), GameOfLife::Alive);
+        ..set(Position::new(100, 101), GameOfLife::Alive);
     );
     grid
 }

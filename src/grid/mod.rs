@@ -105,12 +105,12 @@ impl From<(u32, u32)> for Dimensions {
 }
 
 #[derive(Copy, Clone)]
-pub struct RelCoords {
+pub struct Neighbor {
     x: i32,
     y: i32,
 }
 
-impl RelCoords {
+impl Neighbor {
     pub fn new(x: i32, y: i32) -> Self {
         Self { x, y }
     }
@@ -126,22 +126,22 @@ impl RelCoords {
     }
 }
 
-impl From<(i32, i32)> for RelCoords {
+impl From<(i32, i32)> for Neighbor {
     fn from(coords: (i32, i32)) -> Self {
-        RelCoords::new(coords.0, coords.1)
+        Neighbor::new(coords.0, coords.1)
     }
 }
 
-pub const TOP: RelCoords = RelCoords { x: 0, y: -1 };
-pub const TOP_RIGHT: RelCoords = RelCoords { x: 1, y: -1 };
-pub const RIGHT: RelCoords = RelCoords { x: 1, y: 0 };
-pub const BOTTOM_RIGHT: RelCoords = RelCoords { x: 1, y: 1 };
-pub const BOTTOM: RelCoords = RelCoords { x: 0, y: 1 };
-pub const BOTTOM_LEFT: RelCoords = RelCoords { x: -1, y: 1 };
-pub const LEFT: RelCoords = RelCoords { x: -1, y: 0 };
-pub const TOP_LEFT: RelCoords = RelCoords { x: -1, y: -1 };
+pub const TOP: Neighbor = Neighbor { x: 0, y: -1 };
+pub const TOP_RIGHT: Neighbor = Neighbor { x: 1, y: -1 };
+pub const RIGHT: Neighbor = Neighbor { x: 1, y: 0 };
+pub const BOTTOM_RIGHT: Neighbor = Neighbor { x: 1, y: 1 };
+pub const BOTTOM: Neighbor = Neighbor { x: 0, y: 1 };
+pub const BOTTOM_LEFT: Neighbor = Neighbor { x: -1, y: 1 };
+pub const LEFT: Neighbor = Neighbor { x: -1, y: 0 };
+pub const TOP_LEFT: Neighbor = Neighbor { x: -1, y: -1 };
 
-pub const MOORE_NEIGHBORHOOD: [RelCoords; 8] = [
+pub const MOORE_NEIGHBORHOOD: [Neighbor; 8] = [
     TOP,
     TOP_RIGHT,
     RIGHT,
@@ -152,7 +152,7 @@ pub const MOORE_NEIGHBORHOOD: [RelCoords; 8] = [
     TOP_LEFT,
 ];
 
-pub const NEUMANN_NEIGHBORHOOD: [RelCoords; 4] = [TOP, RIGHT, BOTTOM, LEFT];
+pub const NEUMANN_NEIGHBORHOOD: [Neighbor; 4] = [TOP, RIGHT, BOTTOM, LEFT];
 
 #[cfg(test)]
 mod tests {

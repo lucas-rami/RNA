@@ -6,7 +6,7 @@ use vulkano::buffer::CpuAccessibleBuffer;
 
 // CELL
 use super::{Dimensions, GridDiff, GridView, Position};
-use crate::automaton::Transcoder;
+use crate::automaton::TranscodableCell;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Grid<T: Copy + Default> {
@@ -68,7 +68,7 @@ impl<T: Copy + Default + Eq + PartialEq> Grid<T> {
     }
 }
 
-impl<T: Copy + Default + Transcoder> Grid<T> {
+impl<T: Copy + Default + TranscodableCell> Grid<T> {
     pub fn encode(&self) -> Vec<u32> {
         let mut encoded = Vec::with_capacity(self.dim.size() as usize);
         for cell in self.iter() {

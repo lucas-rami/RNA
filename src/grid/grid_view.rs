@@ -1,5 +1,5 @@
 // CELL
-use super::{Grid, Position, RelCoords};
+use super::{Grid, Position, Neighbor};
 
 pub struct GridView<'a, T: Copy + Default> {
     pos: Position,
@@ -20,7 +20,7 @@ impl<'a, T: Copy + Default> GridView<'a, T> {
         self.grid.get(self.pos)
     }
 
-    pub fn get_relative(&self, coords: &RelCoords) -> &T {
+    pub fn get_relative(&self, coords: &Neighbor) -> &T {
         // @TODO to refactor once we have a formally defined notion of neighborhood
         let dim = self.grid.dim();
         if 1 <= self.pos.x()
@@ -49,7 +49,7 @@ impl<'a, T: Copy + Default> GridView<'a, T> {
         }
     }
 
-    pub fn get_relative_mul(&self, mul_coords: &[RelCoords]) -> Vec<&T> {
+    pub fn get_relative_mul(&self, mul_coords: &[Neighbor]) -> Vec<&T> {
         mul_coords.iter().map(|x| self.get_relative(x)).collect()
     }
 }

@@ -15,37 +15,31 @@ use vulkano::sync::{self, GpuFuture, NowFuture};
 // CELL
 use super::simulator::ComputeOP;
 use crate::advanced_channels::{SimpleReceiver, ThirdPartySender};
-use crate::automaton::{CPUComputableAutomaton, GPUComputableAutomaton, PipelineInfo, Transcoder};
+use crate::automaton::{PipelineInfo, UpdateCPU, UpdateGPU};
 use crate::grid::{Dimensions, Grid, GridHistoryOP};
 
-pub struct GPUCompute<A: GPUComputableAutomaton>
-where
-    A::Cell: Transcoder,
-{
+pub struct GPUCompute<C: UpdateGPU> {
     device: Arc<Device>,
     queue: Arc<Queue>,
     gpu_bufs: Vec<Arc<DeviceLocalBuffer<[u32]>>>,
     nodes: Vec<ComputeNode>,
     next: usize,
     grid_dim: Dimensions,
-    _marker: PhantomData<A>,
+    _marker: PhantomData<C>,
 }
 
-impl<A: GPUComputableAutomaton> GPUCompute<A>
-where
-    A::Cell: Transcoder,
-{
+impl<C: UpdateGPU> GPUCompute<C> {
     pub fn new(
         device: Arc<Device>,
         queue: Arc<Queue>,
         nb_nodes: usize,
-        initial_grid: &Grid<A::Cell>,
+        initial_grid: &Grid<C>,
     ) -> Self {
         if nb_nodes < 2 {
             panic!(ERR_NB_NODES)
         }
-        let pipe_info = A::vk_setup(&device);
-        let pc = A::push_constants(&initial_grid);
+        let pipe_info = C::vk_setup(&device);
+        let pc = C::push_constants(&initial_grid);
 
         let dim = *initial_grid.dim();
         let total_size = dim.size() as usize;
@@ -72,7 +66,7 @@ where
                     i + 1
                 }
             };
-            nodes.push(ComputeNode::new::<A>(
+            nodes.push(ComputeNode::new::<C>(
                 Arc::clone(&device),
                 Arc::clone(&queue),
                 &pipe_info,
@@ -99,8 +93,8 @@ where
 
     pub fn dispatch(
         mut self,
-        op_receiver: SimpleReceiver<ComputeOP<A>>,
-        data_sender: ThirdPartySender<GridHistoryOP<A::Cell>>,
+        op_receiver: SimpleReceiver<ComputeOP<C>>,
+        data_sender: ThirdPartySender<GridHistoryOP<C>>,
     ) {
         loop {
             match op_receiver.wait_for_mail() {
@@ -117,7 +111,7 @@ where
         }
     }
 
-    fn reset(&mut self, initial_grid: &Grid<A::Cell>) {
+    fn reset(&mut self, initial_grid: &Grid<C>) {
         // Reset pointer
         self.next = 0;
 
@@ -147,7 +141,7 @@ where
             .unwrap();
     }
 
-    fn run(&mut self, nb_gens: usize, data_sender: &ThirdPartySender<GridHistoryOP<A::Cell>>) -> bool {
+    fn run(&mut self, nb_gens: usize, data_sender: &ThirdPartySender<GridHistoryOP<C>>) -> bool {
         // Total number of compute nodes
         let nb_nodes = self.nodes.len();
 
@@ -256,18 +250,15 @@ struct ComputeNode {
 }
 
 impl ComputeNode {
-    fn new<A: GPUComputableAutomaton>(
+    fn new<C: UpdateGPU>(
         device: Arc<Device>,
         queue: Arc<Queue>,
-        pipe_info: &PipelineInfo<A::Pipeline>,
+        pipe_info: &PipelineInfo<C::Pipeline>,
         gpu_src: Arc<DeviceLocalBuffer<[u32]>>,
         gpu_dst: Arc<DeviceLocalBuffer<[u32]>>,
-        push_constants: A::PushConstants,
+        push_constants: C::PushConstants,
         dim: &Dimensions,
-    ) -> Self
-    where
-        A::Cell: Transcoder,
-    {
+    ) -> Self {
         let cpu_out = unsafe {
             CpuAccessibleBuffer::uninitialized_array(
                 Arc::clone(&device),
@@ -333,19 +324,19 @@ impl ComputeNode {
     }
 }
 
-pub struct CPUCompute<A: CPUComputableAutomaton> {
-    grid: Grid<A::Cell>,
+pub struct CPUCompute<C: UpdateCPU> {
+    grid: Grid<C>,
 }
 
-impl<A: CPUComputableAutomaton> CPUCompute<A> {
-    pub fn new(initial_grid: Grid<A::Cell>) -> Self {
+impl<C: UpdateCPU> CPUCompute<C> {
+    pub fn new(initial_grid: Grid<C>) -> Self {
         Self { grid: initial_grid }
     }
 
     pub fn dispatch(
         mut self,
-        op_receiver: SimpleReceiver<ComputeOP<A>>,
-        data_sender: ThirdPartySender<GridHistoryOP<A::Cell>>,
+        op_receiver: SimpleReceiver<ComputeOP<C>>,
+        data_sender: ThirdPartySender<GridHistoryOP<C>>,
     ) {
         loop {
             match op_receiver.wait_for_mail() {
@@ -354,7 +345,7 @@ impl<A: CPUComputableAutomaton> CPUCompute<A> {
                     ComputeOP::Run(nb_gens) => {
                         let mut grid = self.grid;
                         for _i in 0..nb_gens {
-                            grid = A::update_grid(&grid);
+                            grid = C::update_grid(&grid);
                             if !data_sender.send(GridHistoryOP::Push(grid.clone())) {
                                 break;
                             }
