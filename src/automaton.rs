@@ -1,4 +1,5 @@
 // Standard library
+use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
@@ -9,25 +10,27 @@ use vulkano::device::Device;
 use vulkano::pipeline::ComputePipelineAbstract;
 
 // CELL
-use crate::grid::{Dimensions, Grid, GridView, Neighbor, PositionIterator};
+use crate::universe::GPUUniverse;
 
-pub trait Cell: Copy + Default + std::fmt::Debug + Eq + PartialEq + Send + 'static {}
-pub trait TranscodableCell: Cell {
-    fn encode(&self) -> u32;
-    fn decode(id: u32) -> Self;
+pub trait AutomatonCell: Copy + Debug + Default + Eq + PartialEq + Send + Sync + 'static {
+    type Neighbor;
+    type Encoded: Copy + Send + Sync;
+
+    fn encode(&self) -> Self::Encoded;
+    fn decode(encoded: &Self::Encoded) -> Self;
+
+    fn neighborhood() -> &'static [(&'static str, Self::Neighbor)];
 }
 
-pub struct CellularAutomaton<C: Cell> {
+pub struct CellularAutomaton<C: AutomatonCell> {
     name: String,
-    neighborhood: Neighborhood,
     _marker: PhantomData<C>,
 }
 
-impl<C: Cell> CellularAutomaton<C> {
-    pub fn new(name: &str, neighbors: &'static [Neighbor]) -> Self {
+impl<C: AutomatonCell> CellularAutomaton<C> {
+    pub fn new(name: &str) -> Self {
         Self {
             name: String::from(name),
-            neighborhood: Neighborhood::new(neighbors),
             _marker: PhantomData,
         }
     }
@@ -35,68 +38,27 @@ impl<C: Cell> CellularAutomaton<C> {
     pub fn name(&self) -> &str {
         &self.name[..]
     }
-
-    pub fn neighborhood(&self) -> &Neighborhood {
-        &self.neighborhood
-    }
 }
 
-pub struct Neighborhood {
-    pub neighbors: &'static [Neighbor],
-    pub max_manhattan_distance: u32,
+pub trait NeighborhoodView {
+    type Cell: AutomatonCell;
+
+    fn get_by_idx(&self, idx: usize) -> &Self::Cell;
+    fn get_by_name(&self, name: &str) -> &Self::Cell;
+    fn get_all<'a>(&'a self) -> Vec<&'a Self::Cell>;
 }
 
-impl Neighborhood {
-    fn new(neighbors: &'static [Neighbor]) -> Self {
-        let mut max_manhattan_distance = 0;
-        for neighbor in neighbors.iter() {
-            // Update maximum Manhattan distance
-            let x = neighbor.x().abs() as u32;
-            let y = neighbor.y().abs() as u32;
-            if x < y && max_manhattan_distance < y {
-                max_manhattan_distance = y;
-            } else if max_manhattan_distance < x {
-                max_manhattan_distance = x;
-            }
-        }
-        Self {
-            neighbors,
-            max_manhattan_distance,
-        }
-    }
-
-    pub fn get_offsets(&self, dim: &Dimensions) -> Vec<i32> {
-        self.neighbors
-            .iter()
-            .map(|n| n.x() + n.y() * (dim.width() as i32))
-            .collect()
-    }
+pub trait CPUCell: AutomatonCell {
+    fn update(&self, neighborhood: impl NeighborhoodView<Cell = Self>) -> Self;
 }
 
-pub trait UpdateCPU: Cell {
-    fn update_cell<'a>(grid: &GridView<'a, Self>) -> Self;
-
-    fn update_grid(grid: &Grid<Self>) -> Grid<Self> {
-        let dim = grid.dim();
-        let mut new_data = Vec::with_capacity(dim.size() as usize);
-        for pos in PositionIterator::new(*dim) {
-            let new_cell = Self::update_cell(&grid.view(pos));
-            new_data.push(new_cell);
-        }
-        Grid::from_data(new_data, *dim)
-    }
-}
-
-pub trait UpdateGPU: TranscodableCell {
+pub trait GPUCell<U: GPUUniverse<Cell = Self>>: AutomatonCell {
     type Pipeline: ComputePipelineAbstract + Send + Sync + 'static;
-    type PushConstants: Copy;
-
-    fn vk_setup(device: &Arc<Device>) -> PipelineInfo<Self::Pipeline>;
-    fn push_constants(grid: &Grid<Self>) -> Self::PushConstants;
+    fn shader_info(device: &Arc<Device>) -> ShaderInfo<Self::Pipeline>;
 }
 
 #[derive(Clone)]
-pub struct PipelineInfo<P>
+pub struct ShaderInfo<P>
 where
     P: ComputePipelineAbstract + Send + Sync + 'static,
 {
@@ -104,6 +66,6 @@ where
     pub pipeline: Arc<P>,
 }
 
-pub trait TermDrawableAutomaton: Cell {
+pub trait TermDrawableAutomaton: AutomatonCell {
     fn style(&self) -> StyledContent<char>;
 }

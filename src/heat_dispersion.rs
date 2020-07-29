@@ -5,9 +5,9 @@ use crossterm::style::{style, Attribute, Color, StyledContent};
 use crate::automaton::*;
 use crate::grid::{Dimensions, Grid, GridView, Position, MOORE_NEIGHBORHOOD};
 
-impl Cell for u8 {}
+impl AutomatonCell for u8 {}
 
-impl UpdateCPU for u8 {
+impl CPUCell for u8 {
     fn update_cell<'a>(grid: &GridView<'a, Self>) -> Self {
         let total_heat = grid
             .get_relative_mul(&MOORE_NEIGHBORHOOD)

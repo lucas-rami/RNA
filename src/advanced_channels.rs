@@ -1,8 +1,13 @@
 // Standard library
-use std::sync::mpsc::{self, Receiver, Sender, RecvError};
+use std::sync::mpsc::{self, Receiver, RecvError, Sender};
 
-pub fn twoway_channel<T, R>(
-) -> (MasterEndpoint<T, R>, SlaveEndpoint<R, T>) {
+pub trait TransmittingEnd {
+    type MSG;
+
+    fn send(&self, msg: Self::MSG);
+}
+
+pub fn twoway_channel<T, R>() -> (MasterEndpoint<T, R>, SlaveEndpoint<R, T>) {
     let (master_tx, slave_rx) = mpsc::channel();
     let (slave_tx, master_rx) = mpsc::channel();
     (
@@ -23,22 +28,14 @@ pub struct MasterEndpoint<T, R> {
 
 impl<T, R> MasterEndpoint<T, R> {
     fn new(tx: Sender<MessageType<T>>, rx: Receiver<R>) -> Self {
-        Self {
-            tx,
-            rx,
-        }
-    }
-
-    #[inline]
-    pub fn send(&self, msg: T)  {
-        self.send_raw(MessageType::SimpleMsg(msg));
+        Self { tx, rx }
     }
 
     pub fn send_and_wait_for_response(&self, request: T) -> R {
         self.send_raw(MessageType::ResponseRequired(request));
 
         match self.rx.recv() {
-            Ok(response) => return response,
+            Ok(response) => response,
             Err(_) => panic!(ERR_DEAD_SLAVE),
         }
     }
@@ -51,6 +48,14 @@ impl<T, R> MasterEndpoint<T, R> {
 
     pub fn create_third_party(&self) -> ThirdPartySender<T> {
         ThirdPartySender::new(self.tx.clone())
+    }
+}
+
+impl<T, R> TransmittingEnd for MasterEndpoint<T, R> {
+    type MSG = T;
+
+    fn send(&self, msg: Self::MSG) {
+        self.send_raw(MessageType::SimpleMsg(msg));
     }
 }
 
@@ -67,20 +72,19 @@ pub struct SlaveEndpoint<T, R> {
 
 impl<T, R> SlaveEndpoint<T, R> {
     fn new(tx: Sender<T>, rx: Receiver<MessageType<R>>) -> Self {
-        Self {
-            tx,
-            rx,
-        }
+        Self { tx, rx }
     }
 
     pub fn wait_for_mail<'a>(&'a self) -> MailType<'a, T, R> {
         match self.rx.recv() {
             Ok(msg) => match msg {
-                MessageType::ResponseRequired(req) => MailType::ResponseRequired(Request::new(&self.tx, req)),
+                MessageType::ResponseRequired(req) => {
+                    MailType::ResponseRequired(Request::new(&self.tx, req))
+                }
                 MessageType::SimpleMsg(msg) => MailType::SimpleMsg(msg),
-                MessageType::DeadChannel => MailType::DeadChannel
-            }
-            Err(_) => MailType::DeadChannel
+                MessageType::DeadChannel => MailType::DeadChannel,
+            },
+            Err(_) => MailType::DeadChannel,
         }
     }
 
@@ -88,9 +92,9 @@ impl<T, R> SlaveEndpoint<T, R> {
         match self.rx.recv() {
             Ok(msg) => match msg {
                 MessageType::SimpleMsg(msg) => msg,
-                _ => panic!(ERR_DEAD_MASTER)
-            }
-            Err(_) => panic!(ERR_DEAD_MASTER)
+                _ => panic!(ERR_DEAD_MASTER),
+            },
+            Err(_) => panic!(ERR_DEAD_MASTER),
         }
     }
 }
@@ -98,26 +102,37 @@ impl<T, R> SlaveEndpoint<T, R> {
 pub struct Request<'a, T, R> {
     tx: &'a Sender<T>,
     request: R,
+    is_answered: bool,
 }
 
 impl<'a, T, R> Request<'a, T, R> {
     fn new(tx: &'a Sender<T>, request: R) -> Self {
-        Self {tx, request}
+        Self {
+            tx,
+            request,
+            is_answered: false,
+        }
     }
 
-
-    pub fn respond(self, response: T) {
+    pub fn respond(mut self, response: T) {
         if let Err(_) = self.tx.send(response) {
-            panic!(ERR_DEAD_MASTER)
+            panic!(ERR_DEAD_MASTER);
         }
+        self.is_answered = true;
     }
 
     pub fn get_request(&self) -> &R {
         &self.request
     }
-
 }
 
+impl<'a, T, R> Drop for Request<'a, T, R> {
+    fn drop(&mut self) {
+        if !self.is_answered {
+            panic!(ERR_NO_RESPONSE);
+        }
+    }
+}
 
 pub struct ThirdPartySender<T> {
     tx: Sender<MessageType<T>>,
@@ -127,12 +142,13 @@ impl<T> ThirdPartySender<T> {
     fn new(tx: Sender<MessageType<T>>) -> Self {
         Self { tx }
     }
+}
 
-    pub fn send(&self, msg: T) -> bool {
-        match self.tx.send(MessageType::SimpleMsg(msg)) {
-            Ok(_) => true,
-            Err(_) => false,
-        }
+impl<T> TransmittingEnd for ThirdPartySender<T> {
+    type MSG = T;
+
+    fn send(&self, msg: Self::MSG) {
+        let _ = self.tx.send(MessageType::SimpleMsg(msg));
     }
 }
 
@@ -145,7 +161,13 @@ impl<T> SimpleSender<T> {
         Self { tx }
     }
 
-    pub fn send(&self, msg: T) {
+    
+}
+
+impl<T> TransmittingEnd for SimpleSender<T> {
+    type MSG = T;
+
+    fn send(&self, msg: Self::MSG) {
         if let Err(_) = self.tx.send(msg) {
             panic!(ERR_DEAD_SLAVE);
         }
@@ -153,7 +175,7 @@ impl<T> SimpleSender<T> {
 }
 
 pub struct SimpleReceiver<R> {
-    rx: Receiver<R>
+    rx: Receiver<R>,
 }
 
 impl<R> SimpleReceiver<R> {
@@ -178,7 +200,7 @@ pub enum MailType<'a, T, R> {
     DeadChannel,
 }
 
-
-
-const ERR_DEAD_MASTER: &str = "Master endpoint died before slave endpoint could repsond to request.";
+const ERR_DEAD_MASTER: &str =
+    "Master endpoint died before slave endpoint could repsond to request.";
 const ERR_DEAD_SLAVE: &str = "Slave endpoint died before master endpoint.";
+const ERR_NO_RESPONSE: &str = "Request object was dropped before sending a response.";

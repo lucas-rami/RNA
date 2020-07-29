@@ -1,0 +1,87 @@
+#version 450
+
+#ifndef _UPDATE_PROC_
+    #define _UPDATE_PROC_ 
+#endif
+
+#ifndef _CELL_TYPE_DEFINITION_
+    #define _CELL_TYPE_DEFINITION_ 
+#endif
+
+#ifndef _CELL_TYPE_
+    #define _CELL_TYPE_ uint 
+#endif
+
+#ifndef _CELL_TYPE_DEFAULT_VALUE_
+    #define _CELL_TYPE_DEFAULT_VALUE_ 0 
+#endif
+
+// === Struct definitions ===
+
+struct Neighbor {
+    uint offset;
+    bool is_negative;
+};
+
+// Custom cell type (if not uint)
+_CELL_TYPE_DEFINITION_
+
+// === Layout information ===
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+layout(push_constant) uniform GridSize {
+	uint width;
+	uint height;
+    uint margin;
+} grid_info;
+
+layout(set = 0, binding = 0) buffer readonly InputGrid {
+    _CELL_TYPE_ data[];
+} input_grid;
+
+layout(set = 0, binding = 1) buffer writeonly OutputGrid {
+    _CELL_TYPE_ data[];
+} output_grid;
+
+layout(set = 0, binding = 2) buffer readonly NeighborsList {
+    Neighbor list[];
+} neighbors;
+
+// === Update procedure ===
+
+// Index in grid (with margin) of cell handled by the current shader invocation (might be out-of-bounds)
+uint idx = (gl_GlobalInvocationID.x + grid_info.margin) + (gl_GlobalInvocationID.y + grid_info.margin) * (grid_info.width + 2 * grid_info.margin);
+
+// Returns the current state of a cell's neighbor (index of neighbor according to order of definition in Rust code)
+_CELL_TYPE_ neighbor(uint nbor_idx) {
+    Neighbor n = neighbors.list[nbor_idx];
+
+    // Compute neighbor index in grid (with margin) 
+    uint rd_idx;
+    if (n.is_negative) {
+        rd_idx = idx - n.offset;
+    } else {
+        rd_idx = idx + n.offset;
+    }
+
+    return input_grid.data[rd_idx];
+}
+
+// Update function, relative to the automaton under consideration
+_CELL_TYPE_ update(_CELL_TYPE_ state) {
+    _UPDATE_PROC_
+    return _CELL_TYPE_DEFAULT_VALUE_;
+}
+
+void main() {
+    uint x = gl_GlobalInvocationID.x;
+    uint y = gl_GlobalInvocationID.y;
+    
+    // Out-of-bounds check due to (1) grid margin, and (2) dispatch layout
+    if (x >= grid_info.margin && x < grid_info.margin + grid_info.width && 
+        y >= grid_info.margin && y < grid_info.margin + grid_info.height) {
+            uint state = input_grid.data[idx];
+            output_grid.data[idx] = update(state);     
+    }
+}
