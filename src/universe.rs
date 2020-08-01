@@ -9,9 +9,12 @@ use crate::automaton::{AutomatonCell, CPUCell, GPUCell};
 pub trait Universe: Clone + Sized + Send + 'static {
     type Cell: AutomatonCell;
     type Position;
+    type Neighbor;
     type Diff: UniverseDiff;
 
     fn get(&self, pos: Self::Position) -> &Self::Cell;
+
+    fn neighbor(&self, pos: &Self::Position, nbor: &Self::Neighbor) -> &Self::Cell;
 
     fn diff(&self, other: &Self) -> Self::Diff;
 

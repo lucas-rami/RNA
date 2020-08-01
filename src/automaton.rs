@@ -10,7 +10,7 @@ use vulkano::device::Device;
 use vulkano::pipeline::ComputePipelineAbstract;
 
 // CELL
-use crate::universe::GPUUniverse;
+use crate::universe::{CPUUniverse, GPUUniverse};
 
 pub trait AutomatonCell: Copy + Debug + Default + Eq + PartialEq + Send + Sync + 'static {
     type Neighbor;
@@ -19,7 +19,7 @@ pub trait AutomatonCell: Copy + Debug + Default + Eq + PartialEq + Send + Sync +
     fn encode(&self) -> Self::Encoded;
     fn decode(encoded: &Self::Encoded) -> Self;
 
-    fn neighborhood() -> &'static [(&'static str, Self::Neighbor)];
+    fn neighborhood() -> &'static [Self::Neighbor];
 }
 
 pub struct CellularAutomaton<C: AutomatonCell> {
@@ -49,7 +49,11 @@ pub trait NeighborhoodView {
 }
 
 pub trait CPUCell: AutomatonCell {
-    fn update(&self, neighborhood: impl NeighborhoodView<Cell = Self>) -> Self;
+    fn update<U: CPUUniverse<Cell = Self, Neighbor = Self::Neighbor>>(
+        &self,
+        universe: &U,
+        pos: &U::Position,
+    ) -> Self;
 }
 
 pub trait GPUCell<U: GPUUniverse<Cell = Self>>: AutomatonCell {

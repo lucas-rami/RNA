@@ -1,14 +1,11 @@
-// Standard library
-use std::sync::Arc;
-
 // External libraries
-use cascade::cascade;
 use crossterm::style::{style, Attribute, Color, StyledContent};
 
 // CELL
 pub mod static_2d_grid;
-use crate::automaton::{AutomatonCell, CPUCell, GPUCell, NeighborhoodView, TermDrawableAutomaton};
+use crate::automaton::{AutomatonCell, CPUCell, TermDrawableAutomaton};
 use crate::universe::grid2d::{Neighbor2D, MOORE_NEIGHBORHOOD};
+use crate::universe::CPUUniverse;
 
 #[derive(Copy, Clone, Eq, PartialEq, std::hash::Hash, std::fmt::Debug)]
 pub enum GameOfLife {
@@ -41,21 +38,24 @@ impl AutomatonCell for GameOfLife {
         }
     }
 
-    fn neighborhood() -> &'static [(&'static str, Self::Neighbor)] {
+    fn neighborhood() -> &'static [Self::Neighbor] {
         &MOORE_NEIGHBORHOOD
     }
 }
 
 impl CPUCell for GameOfLife {
-    fn update(&self, neighborhood: impl NeighborhoodView<Cell = Self>) -> Self {
+    fn update<U: CPUUniverse<Cell = Self, Neighbor = Self::Neighbor>>(
+        &self,
+        universe: &U,
+        pos: &U::Position,
+    ) -> Self {
         // Count the number of alive cells around us
-        let nb_alive_neighbors = neighborhood.get_all().iter().fold(0, |cnt, cell| {
-            if let GameOfLife::Alive = cell {
-                cnt + 1
-            } else {
-                cnt
+        let mut nb_alive_neighbors = 0 as u32;
+        for nbor in Self::neighborhood() {
+            if let GameOfLife::Alive = universe.neighbor(pos, nbor) {
+                nb_alive_neighbors += 1;
             }
-        });
+        }
 
         // Apply the evolution rule
         match self {

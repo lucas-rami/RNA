@@ -16,12 +16,11 @@ use vulkano::sync::{self, GpuFuture, NowFuture};
 // CELL
 use super::{Neighbor2D, Position2D, Size2D};
 use crate::advanced_channels::TransmittingEnd;
-use crate::automaton::{AutomatonCell, CPUCell, GPUCell, NeighborhoodView, ShaderInfo};
+use crate::automaton::{AutomatonCell, CPUCell, GPUCell, ShaderInfo};
 use crate::universe::{CPUUniverse, GPUUniverse, Universe, UniverseDiff};
 
 pub struct Static2DGrid<C: AutomatonCell> {
     data: Vec<C>,
-    view: PrecomputedView<C>,
     size: Size2D,
     size_with_margin: Size2D,
     margin: usize,
@@ -69,7 +68,6 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> Static2DGrid<C> {
 
         Self {
             data: full_data,
-            view: PrecomputedView::new(size_with_margin),
             size,
             size_with_margin,
             margin,
@@ -103,7 +101,6 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> Static2DGrid<C> {
 
         Self {
             data: decoded,
-            view: PrecomputedView::new(size_with_margin),
             size,
             size_with_margin,
             margin,
@@ -129,7 +126,6 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> Static2DGrid<C> {
     fn move_grid_info(self, new_data: Vec<C>) -> Self {
         Self {
             data: new_data,
-            view: self.view,
             size: self.size,
             size_with_margin: self.size_with_margin,
             margin: self.margin,
@@ -140,7 +136,7 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> Static2DGrid<C> {
     fn compute_margin() -> usize {
         let mut max_manhattan_distance = 0;
         let neighbors = C::neighborhood();
-        for (_, n) in neighbors {
+        for n in neighbors {
             let x = n.0.abs() as usize;
             let y = n.1.abs() as usize;
             if x < y && max_manhattan_distance < y {
@@ -156,11 +152,27 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> Static2DGrid<C> {
 impl<C: AutomatonCell<Neighbor = Neighbor2D>> Universe for Static2DGrid<C> {
     type Cell = C;
     type Position = Position2D;
+    type Neighbor = Neighbor2D;
     type Diff = GridDiff<C>;
 
     fn get(&self, pos: Self::Position) -> &Self::Cell {
         let real_pos = Position2D(pos.0 + self.margin, pos.1 + self.margin);
         &self.data[real_pos.idx(&self.size_with_margin)]
+    }
+
+    fn neighbor(&self, pos: &Self::Position, nbor: &Self::Neighbor) -> &Self::Cell {
+        let mut offset = self.margin * (1 + self.size_with_margin.0);
+        if nbor.0 < 0 {
+            offset -= nbor.0.abs() as usize;
+        } else {
+            offset += nbor.0 as usize;
+        }
+        if nbor.1 < 0 {
+            offset -= nbor.1.abs() as usize * self.size_with_margin.0;
+        } else {
+            offset += nbor.1 as usize * self.size_with_margin.0;
+        }
+        &self.data[pos.idx(&self.size_with_margin) + offset]
     }
 
     fn diff(&self, other: &Self) -> Self::Diff {
@@ -182,8 +194,7 @@ impl<C: CPUCell<Neighbor = Neighbor2D>> CPUUniverse for Static2DGrid<C> {
         // Compute new grid
         let mut new_data = Vec::with_capacity(self.data.len());
         for (pos, cell) in self.iter() {
-            let view = Static2DGridView::new(&self, pos);
-            let new_cell = cell.update(view);
+            let new_cell = cell.update(&self, &pos);
             new_data.push(new_cell);
         }
 
@@ -218,7 +229,6 @@ impl<C: AutomatonCell> Clone for Static2DGrid<C> {
     fn clone(&self) -> Self {
         Self {
             data: self.data.clone(),
-            view: self.view.clone(),
             size: self.size,
             size_with_margin: self.size_with_margin,
             margin: self.margin,
@@ -267,64 +277,6 @@ impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> Iterator for Static2DGridItera
     }
 }
 
-pub struct Static2DGridView<'a, C: AutomatonCell> {
-    grid: &'a Static2DGrid<C>,
-    ref_idx: usize,
-}
-
-impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> Static2DGridView<'a, C> {
-    pub fn new(grid: &'a Static2DGrid<C>, ref_pos: Position2D) -> Self {
-        let real_pos = Position2D(ref_pos.0 + grid.margin, ref_pos.1 + grid.margin);
-        Self {
-            grid,
-            ref_idx: real_pos.idx(&grid.size_with_margin),
-        }
-    }
-
-    fn get_cell(&self, u_offset: usize, sign: bool) -> &C {
-        // Check that neighbor is within grid, otherwise return default cell state
-        if sign {
-            if u_offset <= self.ref_idx {
-                self.grid.get_unchecked(self.ref_idx - u_offset)
-            } else {
-                &self.grid.view.default
-            }
-        } else {
-            let grid_idx = self.ref_idx + u_offset;
-            if grid_idx <= self.grid.data.len() {
-                self.grid.get_unchecked(grid_idx)
-            } else {
-                &self.grid.view.default
-            }
-        }
-    }
-}
-
-impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> NeighborhoodView for Static2DGridView<'a, C> {
-    type Cell = C;
-
-    fn get_by_idx(&self, idx: usize) -> &Self::Cell {
-        let (u_offset, sign) = self.grid.view.offsets[idx];
-        self.get_cell(u_offset, sign)
-    }
-
-    fn get_by_name(&self, name: &str) -> &Self::Cell {
-        match self.grid.view.name_map.get(name) {
-            Some((u_offset, sign)) => self.get_cell(*u_offset, *sign),
-            None => panic!(format!("Requested neighbor {} does not exist.", name)),
-        }
-    }
-
-    fn get_all<'b>(&'b self) -> Vec<&'b Self::Cell> {
-        self.grid
-            .view
-            .offsets
-            .iter()
-            .map(|(u_offset, sign)| self.get_cell(*u_offset, *sign))
-            .collect()
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct GridDiff<C: AutomatonCell> {
     modifs: HashMap<usize, C>,
@@ -369,43 +321,6 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> UniverseDiff for GridDiff<C> {
                     self.modifs.insert(*pos, *new_cell);
                 }
             }
-        }
-    }
-}
-
-#[derive(Clone)]
-struct PrecomputedView<C: AutomatonCell> {
-    size_with_margin: Size2D,
-    default: C,
-    name_map: HashMap<&'static str, (usize, bool)>,
-    offsets: Vec<(usize, bool)>,
-}
-
-impl<C: AutomatonCell<Neighbor = Neighbor2D>> PrecomputedView<C> {
-    fn new(size_with_margin: Size2D) -> Self {
-        let mut name_map = HashMap::new();
-        let mut offsets = Vec::new();
-
-        for (name, n) in C::neighborhood() {
-            let (u_offset, sign) = {
-                let offset = n.0 + n.1 * (size_with_margin.0 as i32);
-                if offset < 0 {
-                    (offset.abs() as usize, true)
-                } else {
-                    (offset as usize, false)
-                }
-            };
-            if let Some(_) = name_map.insert(*name, (u_offset, sign)) {
-                panic!(format!("Neighbor named {} appears multiple times.", name));
-            }
-            offsets.push((u_offset, sign));
-        }
-
-        Self {
-            size_with_margin,
-            default: C::default(),
-            name_map,
-            offsets,
         }
     }
 }
