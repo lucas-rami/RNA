@@ -4,7 +4,6 @@ mod automaton;
 mod commands;
 mod game_of_life;
 mod universe;
-mod simulator;
 // mod heat_dispersion;
 // mod terminal_ui;
 // use automaton::CellularAutomaton;

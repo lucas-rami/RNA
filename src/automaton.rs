@@ -40,14 +40,6 @@ impl<C: AutomatonCell> CellularAutomaton<C> {
     }
 }
 
-pub trait NeighborhoodView {
-    type Cell: AutomatonCell;
-
-    fn get_by_idx(&self, idx: usize) -> &Self::Cell;
-    fn get_by_name(&self, name: &str) -> &Self::Cell;
-    fn get_all<'a>(&'a self) -> Vec<&'a Self::Cell>;
-}
-
 pub trait CPUCell: AutomatonCell {
     fn update<U: CPUUniverse<Cell = Self, Neighbor = Self::Neighbor>>(
         &self,

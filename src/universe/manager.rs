@@ -3,32 +3,34 @@ use std::marker::PhantomData;
 use std::thread;
 
 // CELL
-use super::{CPUUniverse, GPUUniverse, Universe, UniverseDiff, UniverseManager};
+use super::{CPUUniverse, GPUUniverse, Universe, UniverseDiff, Simulator};
 use crate::advanced_channels::{
     oneway_channel, twoway_channel, MailType, MasterEndpoint, SimpleReceiver, SimpleSender,
     SlaveEndpoint, ThirdPartySender, TransmittingEnd,
 };
 use crate::automaton::{CPUCell, GPUCell};
 
-/// SyncUniverseManager
+/// SyncSimulator
 
-pub struct SyncUniverseManager<U: Universe> {
+pub struct SyncSimulator<U: Universe> {
     current_gen: U,
     history: UniverseHistory<U>,
     evolve_fn: fn(U) -> U,
+    max_gen: usize,
 }
 
-impl<U: Universe> SyncUniverseManager<U> {
+impl<U: Universe> SyncSimulator<U> {
     fn new(start_universe: U, f_check: usize, evolve_fn: fn(U) -> U) -> Self {
         Self {
             current_gen: start_universe.clone(),
             history: UniverseHistory::new(start_universe, f_check),
             evolve_fn,
+            max_gen: 0, 
         }
     }
 }
 
-impl<U: Universe> UniverseManager for SyncUniverseManager<U> {
+impl<U: Universe> Simulator for SyncSimulator<U> {
     type U = U;
 
     fn run(&mut self, nb_gens: usize) {
@@ -39,22 +41,31 @@ impl<U: Universe> UniverseManager for SyncUniverseManager<U> {
             self.history.push(universe.clone());
         }
         self.current_gen = universe;
+        self.max_gen += nb_gens;
     }
 
     fn reset(&mut self, start_universe: &Self::U) {
         self.current_gen = start_universe.clone();
     }
 
-    fn generation(&self, gen: usize) -> Option<Self::U> {
+    fn get_highest_generation(&self) -> usize {
+        self.max_gen
+    }
+
+    fn get_generation(&self, gen: usize) -> Option<Self::U> {
         self.history.get_gen(gen)
     }
 
-    fn difference(&self, ref_gen: usize, target_gen: usize) -> Option<<Self::U as Universe>::Diff> {
+    fn get_difference(
+        &self,
+        ref_gen: usize,
+        target_gen: usize,
+    ) -> Option<<Self::U as Universe>::Diff> {
         self.history.get_diff(ref_gen, target_gen)
     }
 }
 
-impl<U: CPUUniverse> SyncUniverseManager<U>
+impl<U: CPUUniverse> SyncSimulator<U>
 where
     U::Cell: CPUCell,
 {
@@ -63,7 +74,7 @@ where
     }
 }
 
-impl<U: GPUUniverse> SyncUniverseManager<U>
+impl<U: GPUUniverse> SyncSimulator<U>
 where
     U::Cell: GPUCell<U>,
 {
@@ -72,16 +83,16 @@ where
     }
 }
 
-/// AsyncUniverseManager
+/// AsyncSimulator
 
-pub struct AsyncUniverseManager<U: Universe> {
+pub struct AsyncSimulator<U: Universe> {
     runner_comm: SimpleSender<RunnerOP<U>>,
     history_comm: MasterEndpoint<HistoryRequest<U>, HistoryResponse<U>>,
     max_gen: usize,
     _marker: PhantomData<U>,
 }
 
-impl<U: Universe> AsyncUniverseManager<U> {
+impl<U: Universe> AsyncSimulator<U> {
     pub fn new(start_universe: U, f_check: usize, evolve_fn: fn(U) -> U) -> Self {
         // Create communication channels
         let (runner_op_sender, runner_op_receiver) = oneway_channel();
@@ -146,7 +157,7 @@ impl<U: Universe> AsyncUniverseManager<U> {
         universe
     }
 
-    fn generation_blocking(&self, gen: usize, blocking: bool) -> Option<U> {
+    fn get_generation_blocking(&self, gen: usize, blocking: bool) -> Option<U> {
         match self
             .history_comm
             .send_and_wait_for_response(HistoryRequest::GetGen(gen, blocking))
@@ -172,7 +183,7 @@ impl<U: Universe> AsyncUniverseManager<U> {
     }
 }
 
-impl<U: Universe> UniverseManager for AsyncUniverseManager<U> {
+impl<U: Universe> Simulator for AsyncSimulator<U> {
     type U = U;
 
     fn run(&mut self, nb_gens: usize) {
@@ -186,15 +197,23 @@ impl<U: Universe> UniverseManager for AsyncUniverseManager<U> {
         self.max_gen = 0;
     }
 
-    fn generation(&self, gen: usize) -> Option<Self::U> {
+    fn get_highest_generation(&self) -> usize {
+        self.max_gen
+    }
+
+    fn get_generation(&self, gen: usize) -> Option<Self::U> {
         if gen < self.max_gen {
             None
         } else {
-            self.generation_blocking(gen, true)
+            self.get_generation_blocking(gen, true)
         }
     }
 
-    fn difference(&self, ref_gen: usize, target_gen: usize) -> Option<<Self::U as Universe>::Diff> {
+    fn get_difference(
+        &self,
+        ref_gen: usize,
+        target_gen: usize,
+    ) -> Option<<Self::U as Universe>::Diff> {
         if target_gen < self.max_gen {
             None
         } else {
@@ -203,7 +222,7 @@ impl<U: Universe> UniverseManager for AsyncUniverseManager<U> {
     }
 }
 
-impl<U: CPUUniverse> AsyncUniverseManager<U>
+impl<U: CPUUniverse> AsyncSimulator<U>
 where
     U::Cell: CPUCell,
 {
@@ -212,7 +231,7 @@ where
     }
 }
 
-impl<U: GPUUniverse> AsyncUniverseManager<U>
+impl<U: GPUUniverse> AsyncSimulator<U>
 where
     U::Cell: GPUCell<U>,
 {
