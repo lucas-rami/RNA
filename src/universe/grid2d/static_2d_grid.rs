@@ -10,14 +10,13 @@ use vulkano::command_buffer::{
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::{Device, DeviceExtensions, Queue};
 use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
-use vulkano::pipeline::ComputePipelineAbstract;
 use vulkano::sync::{self, GpuFuture, NowFuture};
 
 // CELL
 use super::{Neighbor2D, Position2D, Size2D};
 use crate::advanced_channels::TransmittingEnd;
 use crate::automaton::{AutomatonCell, CPUCell, GPUCell, ShaderInfo};
-use crate::universe::{CPUUniverse, GPUUniverse, Universe, UniverseDiff};
+use crate::universe::{CPUUniverse, GPUUniverse, Universe, UniverseAutomatonShader, UniverseDiff};
 
 pub struct Static2DGrid<C: AutomatonCell> {
     data: Vec<C>,
@@ -161,18 +160,13 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> Universe for Static2DGrid<C> {
     }
 
     fn neighbor(&self, pos: &Self::Position, nbor: &Self::Neighbor) -> &Self::Cell {
-        let mut offset = self.margin * (1 + self.size_with_margin.0);
-        if nbor.0 < 0 {
-            offset -= nbor.0.abs() as usize;
+        let offset = nbor.0 + nbor.1 * self.size_with_margin.0 as i32;
+        let idx = pos.idx(&self.size_with_margin);
+        if offset < 0 {
+            &self.data[idx - offset.abs() as usize]
         } else {
-            offset += nbor.0 as usize;
+            &self.data[idx + offset as usize]
         }
-        if nbor.1 < 0 {
-            offset -= nbor.1.abs() as usize * self.size_with_margin.0;
-        } else {
-            offset += nbor.1 as usize * self.size_with_margin.0;
-        }
-        &self.data[pos.idx(&self.size_with_margin) + offset]
     }
 
     fn diff(&self, other: &Self) -> Self::Diff {
@@ -202,7 +196,10 @@ impl<C: CPUCell<Neighbor = Neighbor2D>> CPUUniverse for Static2DGrid<C> {
     }
 }
 
-impl<C: GPUCell<Self, Neighbor = Neighbor2D>> Static2DGrid<C> {
+impl<C: GPUCell<Neighbor = Neighbor2D>> Static2DGrid<C>
+where
+    Static2DGrid<C>: UniverseAutomatonShader<C>,
+{
     fn get_gpu_handle(&mut self) -> &mut GPUCompute<C> {
         if let None = self.gpu {
             self.gpu = Some(GPUCompute::new(self, 16));
@@ -211,7 +208,10 @@ impl<C: GPUCell<Self, Neighbor = Neighbor2D>> Static2DGrid<C> {
     }
 }
 
-impl<C: GPUCell<Self, Neighbor = Neighbor2D>> GPUUniverse for Static2DGrid<C> {
+impl<C: GPUCell<Neighbor = Neighbor2D>> GPUUniverse for Static2DGrid<C>
+where
+    Static2DGrid<C>: UniverseAutomatonShader<C>,
+{
     fn evolve(mut self, nb_gens: usize) -> Self {
         self.get_gpu_handle().run(nb_gens)
     }
@@ -334,7 +334,10 @@ struct GPUCompute<C: AutomatonCell> {
     next: usize,
 }
 
-impl<C: GPUCell<Static2DGrid<C>, Neighbor = Neighbor2D>> GPUCompute<C> {
+impl<C: GPUCell<Neighbor = Neighbor2D>> GPUCompute<C>
+where
+    Static2DGrid<C>: UniverseAutomatonShader<C>,
+{
     fn new(grid: &Static2DGrid<C>, nb_nodes: usize) -> Self {
         // Create a logical device and compute queue
         let (device, queue) = {
@@ -395,7 +398,7 @@ impl<C: GPUCell<Static2DGrid<C>, Neighbor = Neighbor2D>> GPUCompute<C> {
                     }
                 };
 
-                let shader = C::shader_info(&device);
+                let shader = Static2DGrid::shader_info(&device);
                 nodes.push(ComputeNode::new(
                     grid,
                     &shader,
@@ -577,9 +580,9 @@ struct ComputeNode<C: AutomatonCell> {
 }
 
 impl<C: AutomatonCell> ComputeNode<C> {
-    fn new<P: ComputePipelineAbstract + Send + Sync + 'static>(
+    fn new(
         grid: &Static2DGrid<C>,
-        shader: &ShaderInfo<P>,
+        shader: &ShaderInfo,
         device: Arc<Device>,
         queue: Arc<Queue>,
         gpu_src: Arc<DeviceLocalBuffer<[C::Encoded]>>,

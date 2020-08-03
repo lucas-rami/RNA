@@ -1,16 +1,14 @@
 // Standard library
 use std::fmt::Debug;
-use std::marker::PhantomData;
 use std::sync::Arc;
 
 // External libraries
 use crossterm::style::StyledContent;
 use vulkano::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
-use vulkano::device::Device;
 use vulkano::pipeline::ComputePipelineAbstract;
 
 // CELL
-use crate::universe::{CPUUniverse, GPUUniverse};
+use crate::universe::CPUUniverse;
 
 pub trait AutomatonCell: Copy + Debug + Default + Eq + PartialEq + Send + Sync + 'static {
     type Neighbor;
@@ -22,24 +20,6 @@ pub trait AutomatonCell: Copy + Debug + Default + Eq + PartialEq + Send + Sync +
     fn neighborhood() -> &'static [Self::Neighbor];
 }
 
-pub struct CellularAutomaton<C: AutomatonCell> {
-    name: String,
-    _marker: PhantomData<C>,
-}
-
-impl<C: AutomatonCell> CellularAutomaton<C> {
-    pub fn new(name: &str) -> Self {
-        Self {
-            name: String::from(name),
-            _marker: PhantomData,
-        }
-    }
-
-    pub fn name(&self) -> &str {
-        &self.name[..]
-    }
-}
-
 pub trait CPUCell: AutomatonCell {
     fn update<U: CPUUniverse<Cell = Self, Neighbor = Self::Neighbor>>(
         &self,
@@ -48,18 +28,12 @@ pub trait CPUCell: AutomatonCell {
     ) -> Self;
 }
 
-pub trait GPUCell<U: GPUUniverse<Cell = Self>>: AutomatonCell {
-    type Pipeline: ComputePipelineAbstract + Send + Sync + 'static;
-    fn shader_info(device: &Arc<Device>) -> ShaderInfo<Self::Pipeline>;
-}
+pub trait GPUCell: AutomatonCell {}
 
 #[derive(Clone)]
-pub struct ShaderInfo<P>
-where
-    P: ComputePipelineAbstract + Send + Sync + 'static,
-{
+pub struct ShaderInfo {
     pub layout: Arc<UnsafeDescriptorSetLayout>,
-    pub pipeline: Arc<P>,
+    pub pipeline: Arc<Box<dyn ComputePipelineAbstract + Send + Sync + 'static>>,
 }
 
 pub trait TermDrawableAutomaton: AutomatonCell {

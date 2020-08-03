@@ -69,16 +69,16 @@ impl<U: CPUUniverse> SyncSimulator<U>
 where
     U::Cell: CPUCell,
 {
-    fn cpu_backend(start_universe: U, f_check: usize) -> Self {
+    pub fn cpu_backend(start_universe: U, f_check: usize) -> Self {
         Self::new(start_universe, f_check, U::evolve_once)
     }
 }
 
 impl<U: GPUUniverse> SyncSimulator<U>
 where
-    U::Cell: GPUCell<U>,
+    U::Cell: GPUCell,
 {
-    fn gpu_backend(start_universe: U, f_check: usize) -> Self {
+    pub fn gpu_backend(start_universe: U, f_check: usize) -> Self {
         Self::new(start_universe, f_check, U::evolve_once)
     }
 }
@@ -226,16 +226,16 @@ impl<U: CPUUniverse> AsyncSimulator<U>
 where
     U::Cell: CPUCell,
 {
-    fn cpu_backend(start_universe: U, f_check: usize) -> Self {
+    pub fn cpu_backend(start_universe: U, f_check: usize) -> Self {
         Self::new(start_universe, f_check, U::evolve_once)
     }
 }
 
 impl<U: GPUUniverse> AsyncSimulator<U>
 where
-    U::Cell: GPUCell<U>,
+    U::Cell: GPUCell,
 {
-    fn gpu_backend(start_universe: U, f_check: usize) -> Self {
+    pub fn gpu_backend(start_universe: U, f_check: usize) -> Self {
         Self::new(start_universe, f_check, U::evolve_once)
     }
 }

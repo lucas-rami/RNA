@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use std::hash::Hash;
 
 // CELL
-pub mod static_grid;
+pub mod static_2d_grid;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Size2D(pub usize, pub usize);

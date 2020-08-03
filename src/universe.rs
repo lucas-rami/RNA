@@ -1,13 +1,19 @@
+// Standard library
+use std::sync::Arc;
+
+// External libraries
+use vulkano::device::Device;
+
 // CELL
 pub mod grid2d;
-pub mod manager;
+pub mod simulator;
 use crate::advanced_channels::TransmittingEnd;
-use crate::automaton::{AutomatonCell, CPUCell, GPUCell};
+use crate::automaton::{AutomatonCell, CPUCell, GPUCell, ShaderInfo};
 
 /// Universe
 
 pub trait Universe: Clone + Sized + Send + 'static {
-    type Cell: AutomatonCell;
+    type Cell: AutomatonCell<Neighbor = Self::Neighbor>;
     type Position;
     type Neighbor;
     type Diff: UniverseDiff;
@@ -49,7 +55,7 @@ where
 
 pub trait GPUUniverse: Universe
 where
-    Self::Cell: GPUCell<Self>,
+    Self::Cell: GPUCell,
 {
     fn evolve(self, nb_gens: usize) -> Self {
         let mut universe = self;
@@ -71,6 +77,10 @@ where
         }
         universe
     }
+}
+
+pub trait UniverseAutomatonShader<C: AutomatonCell>: Universe<Cell = C, Neighbor = C::Neighbor> {
+    fn shader_info(device: &Arc<Device>) -> ShaderInfo;
 }
 
 /// UniverseDiff
