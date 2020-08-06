@@ -2,13 +2,15 @@
 use std::sync::Arc;
 
 // External libraries
+use vulkano::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use vulkano::device::Device;
+use vulkano::pipeline::ComputePipelineAbstract;
 
 // CELL
 pub mod grid2d;
 pub mod simulator;
 use crate::advanced_channels::TransmittingEnd;
-use crate::automaton::{AutomatonCell, CPUCell, GPUCell, ShaderInfo};
+use crate::automaton::{AutomatonCell, CPUCell, GPUCell};
 
 /// Universe
 
@@ -79,8 +81,16 @@ where
     }
 }
 
-pub trait UniverseAutomatonShader<C: AutomatonCell>: Universe<Cell = C, Neighbor = C::Neighbor> {
+pub trait UniverseAutomatonShader<C: AutomatonCell>:
+    Universe<Cell = C, Neighbor = C::Neighbor>
+{
     fn shader_info(device: &Arc<Device>) -> ShaderInfo;
+}
+
+#[derive(Clone)]
+pub struct ShaderInfo {
+    pub layout: Arc<UnsafeDescriptorSetLayout>,
+    pub pipeline: Arc<Box<dyn ComputePipelineAbstract + Send + Sync + 'static>>,
 }
 
 /// UniverseDiff

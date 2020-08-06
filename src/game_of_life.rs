@@ -2,7 +2,6 @@
 use crossterm::style::{style, Attribute, Color, StyledContent};
 
 // CELL
-pub mod static_2d_grid;
 use crate::automaton::{AutomatonCell, CPUCell, TermDrawableAutomaton};
 use crate::universe::grid2d::{Neighbor2D, MOORE_NEIGHBORHOOD};
 use crate::universe::CPUUniverse;

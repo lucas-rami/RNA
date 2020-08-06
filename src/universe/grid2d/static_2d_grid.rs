@@ -15,8 +15,8 @@ use vulkano::sync::{self, GpuFuture, NowFuture};
 // CELL
 use super::{Neighbor2D, Position2D, Size2D};
 use crate::advanced_channels::TransmittingEnd;
-use crate::automaton::{AutomatonCell, CPUCell, GPUCell, ShaderInfo};
-use crate::universe::{CPUUniverse, GPUUniverse, Universe, UniverseAutomatonShader, UniverseDiff};
+use crate::automaton::{AutomatonCell, CPUCell, GPUCell};
+use crate::universe::{CPUUniverse, GPUUniverse, Universe, UniverseAutomatonShader, UniverseDiff, ShaderInfo};
 
 pub struct Static2DGrid<C: AutomatonCell> {
     data: Vec<C>,

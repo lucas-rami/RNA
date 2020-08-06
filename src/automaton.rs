@@ -1,11 +1,8 @@
 // Standard library
 use std::fmt::Debug;
-use std::sync::Arc;
 
 // External libraries
 use crossterm::style::StyledContent;
-use vulkano::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
-use vulkano::pipeline::ComputePipelineAbstract;
 
 // CELL
 use crate::universe::CPUUniverse;
@@ -29,12 +26,6 @@ pub trait CPUCell: AutomatonCell {
 }
 
 pub trait GPUCell: AutomatonCell {}
-
-#[derive(Clone)]
-pub struct ShaderInfo {
-    pub layout: Arc<UnsafeDescriptorSetLayout>,
-    pub pipeline: Arc<Box<dyn ComputePipelineAbstract + Send + Sync + 'static>>,
-}
 
 pub trait TermDrawableAutomaton: AutomatonCell {
     fn style(&self) -> StyledContent<char>;

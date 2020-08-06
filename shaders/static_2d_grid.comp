@@ -18,11 +18,6 @@
 
 // === Struct definitions ===
 
-struct Neighbor {
-    uint offset;
-    bool is_negative;
-};
-
 // Custom cell type (if not uint)
 _CELL_TYPE_DEFINITION_
 
@@ -47,7 +42,7 @@ layout(set = 0, binding = 1) buffer writeonly OutputGrid {
 struct Neighbor2D {
     int x_offset;
     int y_offset;
-}
+};
 
 // === Update procedure ===
 
@@ -63,14 +58,15 @@ _CELL_TYPE_ neighbor(Neighbor2D nbor) {
     if (offset < 0) {
         return input_grid.data[idx - abs(offset)];
     } else {
-        return input_grid.data[idx + uint(offset)]
+        return input_grid.data[idx + uint(offset)];
     }
 }
 
 // Update function, relative to the automaton under consideration
 _CELL_TYPE_ update(_CELL_TYPE_ state) {
+    _CELL_TYPE_ new_state = _CELL_TYPE_DEFAULT_VALUE_;
     _UPDATE_PROC_
-    return _CELL_TYPE_DEFAULT_VALUE_;
+    return new_state;
 }
 
 void main() {
