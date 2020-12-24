@@ -21,6 +21,11 @@
 // Custom cell type (if not uint)
 _CELL_TYPE_DEFINITION_
 
+struct Neighbor2D {
+    int x_offset;
+    int y_offset;
+};
+
 // === Layout information ===
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
@@ -39,18 +44,13 @@ layout(set = 0, binding = 1) buffer writeonly OutputGrid {
     _CELL_TYPE_ data[];
 } output_grid;
 
-struct Neighbor2D {
-    int x_offset;
-    int y_offset;
-};
-
 // === Update procedure ===
 
-// Index in grid (with margin) of cell handled by the current shader invocation (might be out-of-bounds)
-uint idx = (gl_GlobalInvocationID.x + grid_info.margin) + (gl_GlobalInvocationID.y + grid_info.margin) * (grid_info.width + 2 * grid_info.margin);
-
 // Used for neighbor index calculation
-int line_width_with_margin = int(grid_info.margin + grid_info.width);
+int line_width_with_margin = int(2 * grid_info.margin + grid_info.width);
+
+// Index in grid (with margin) of cell handled by the current shader invocation (might be out-of-bounds)
+uint idx = (gl_GlobalInvocationID.x + grid_info.margin) + (gl_GlobalInvocationID.y + grid_info.margin) * line_width_with_margin;
 
 // Returns the current state of a cell's neighbor
 _CELL_TYPE_ neighbor(Neighbor2D nbor) {
@@ -70,14 +70,12 @@ _CELL_TYPE_ update(_CELL_TYPE_ state) {
 }
 
 void main() {
-    // TODO incorrect when layot != (1, 1, 1)
-    uint x = gl_GlobalInvocationID.x;
-    uint y = gl_GlobalInvocationID.y;
+    uint x = grid_info.margin + gl_GlobalInvocationID.x;
+    uint y = grid_info.margin + gl_GlobalInvocationID.y;
     
     // Out-of-bounds check due to (1) grid margin, and (2) dispatch layout
-    if (x >= grid_info.margin && x < grid_info.margin + grid_info.width && 
-        y >= grid_info.margin && y < grid_info.margin + grid_info.height) {
-            uint state = input_grid.data[idx];
-            output_grid.data[idx] = update(state);     
+    if (x < grid_info.margin + grid_info.width && y < grid_info.margin + grid_info.height) {
+        uint state = input_grid.data[idx];
+        output_grid.data[idx] = update(state);     
     }
 }

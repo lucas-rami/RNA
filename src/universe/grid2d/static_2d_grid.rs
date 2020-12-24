@@ -16,7 +16,9 @@ use vulkano::sync::{self, GpuFuture, NowFuture};
 use super::{Neighbor2D, Position2D, Size2D};
 use crate::advanced_channels::TransmittingEnd;
 use crate::automaton::{AutomatonCell, CPUCell, GPUCell};
-use crate::universe::{CPUUniverse, GPUUniverse, Universe, UniverseAutomatonShader, UniverseDiff, ShaderInfo};
+use crate::universe::{
+    CPUUniverse, GPUUniverse, ShaderInfo, Universe, UniverseAutomatonShader, UniverseDiff,
+};
 
 pub struct Static2DGrid<C: AutomatonCell> {
     data: Vec<C>,
@@ -325,6 +327,8 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> UniverseDiff for GridDiff<C> {
     }
 }
 
+const DISPATCH_LAYOUT: (usize, usize, usize) = (8, 8, 1);
+
 #[derive(Clone)]
 struct GPUCompute<C: AutomatonCell> {
     size: Size2D,
@@ -617,18 +621,24 @@ impl<C: AutomatonCell> ComputeNode<C> {
                 .unwrap(),
         );
 
-        // TODO add neighbor buffer
+        let dimensions = {
+            let mut dimensions_x = grid.size.0 / DISPATCH_LAYOUT.0;
+            if dimensions_x * DISPATCH_LAYOUT.0 != grid.size.0 {
+                dimensions_x += 1;
+            }
+            let mut dimensions_y = grid.size.1 / DISPATCH_LAYOUT.0;
+            if dimensions_y * DISPATCH_LAYOUT.0 != grid.size.1 {
+                dimensions_y += 1;
+            }
+            [dimensions_x as u32, dimensions_y as u32, 0]
+        };
 
         // Run shader command
         let cmd_exe = Arc::new(
             AutoCommandBufferBuilder::primary(Arc::clone(&device), queue.family())
                 .unwrap()
                 .dispatch(
-                    [
-                        grid.size_with_margin.0 as u32,
-                        grid.size_with_margin.1 as u32,
-                        1,
-                    ],
+                    dimensions,
                     Arc::clone(&shader.pipeline),
                     Arc::clone(&set),
                     pc,
