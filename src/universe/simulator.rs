@@ -1,9 +1,8 @@
 // Standard library
-use std::marker::PhantomData;
 use std::thread;
 
 // CELL
-use super::{CPUUniverse, GPUUniverse, Universe, UniverseDiff, Simulator};
+use super::{CPUUniverse, GPUUniverse, Simulator, Universe, UniverseDiff};
 use crate::advanced_channels::{
     oneway_channel, twoway_channel, MailType, MasterEndpoint, SimpleReceiver, SimpleSender,
     SlaveEndpoint, ThirdPartySender, TransmittingEnd,
@@ -25,7 +24,7 @@ impl<U: Universe> SyncSimulator<U> {
             current_gen: start_universe.clone(),
             history: UniverseHistory::new(start_universe, f_check),
             evolve_fn,
-            max_gen: 0, 
+            max_gen: 0,
         }
     }
 }
@@ -89,7 +88,6 @@ pub struct AsyncSimulator<U: Universe> {
     runner_comm: SimpleSender<RunnerOP<U>>,
     history_comm: MasterEndpoint<HistoryRequest<U>, HistoryResponse<U>>,
     max_gen: usize,
-    _marker: PhantomData<U>,
 }
 
 impl<U: Universe> AsyncSimulator<U> {
@@ -112,7 +110,6 @@ impl<U: Universe> AsyncSimulator<U> {
             runner_comm: runner_op_sender,
             history_comm: history_master,
             max_gen: 0,
-            _marker: PhantomData,
         }
     }
 
@@ -312,70 +309,66 @@ impl<U: Universe> UniverseHistory<U> {
     pub fn detach(mut self, endpoint: SlaveEndpoint<HistoryResponse<U>, HistoryRequest<U>>) {
         thread::spawn(move || loop {
             match endpoint.wait_for_mail() {
-                MailType::SimpleMsg(msg) => match msg {
+                MailType::Message(msg, None) => match msg {
                     HistoryRequest::Push(grid) => self.push(grid),
                     _ => panic!(ERR_INCOMPATIBLE_MAIL_TYPE),
                 },
-                MailType::ResponseRequired(req) => {
-                    let request = req.get_request();
-                    match request {
-                        HistoryRequest::GetGen(gen, blocking) => match self.get_gen(*gen) {
-                            Some(grid) => {
-                                req.respond(HistoryResponse::GetGen(Some(grid)));
+                MailType::Message(msg, Some(req)) => match msg {
+                    HistoryRequest::GetGen(gen, blocking) => match self.get_gen(gen) {
+                        Some(grid) => {
+                            req.respond(HistoryResponse::GetGen(Some(grid)));
+                        }
+                        None => {
+                            if blocking {
+                                loop {
+                                    if let HistoryRequest::Push(grid) = endpoint.wait_for_msg() {
+                                        self.push(grid);
+                                        if let Some(response_grid) = self.get_gen(gen) {
+                                            req.respond(HistoryResponse::GetGen(Some(
+                                                response_grid,
+                                            )));
+                                            break;
+                                        }
+                                    } else {
+                                        panic!(ERR_INCOMPATIBLE_MAIL_TYPE);
+                                    }
+                                }
+                            } else {
+                                req.respond(HistoryResponse::GetGen(None));
+                            }
+                        }
+                    },
+                    HistoryRequest::GetDiff(ref_gen, target_gen, blocking) => {
+                        match self.get_diff(ref_gen, target_gen) {
+                            Some(diff) => {
+                                req.respond(HistoryResponse::GetDiff(Some(diff)));
                             }
                             None => {
-                                if *blocking {
+                                if blocking {
                                     loop {
-                                        match endpoint.wait_for_simple_msg() {
-                                            HistoryRequest::Push(grid) => {
-                                                self.push(grid);
-                                                if let Some(response_grid) = self.get_gen(*gen) {
-                                                    req.respond(HistoryResponse::GetGen(Some(
-                                                        response_grid,
-                                                    )));
-                                                    break;
-                                                }
+                                        if let HistoryRequest::Push(grid) = endpoint.wait_for_msg()
+                                        {
+                                            self.push(grid);
+                                            if let Some(response_diff) =
+                                                self.get_diff(ref_gen, target_gen)
+                                            {
+                                                req.respond(HistoryResponse::GetDiff(Some(
+                                                    response_diff,
+                                                )));
+                                                break;
                                             }
-                                            _ => panic!(ERR_INCOMPATIBLE_MAIL_TYPE),
+                                        } else {
+                                            panic!(ERR_INCOMPATIBLE_MAIL_TYPE);
                                         }
                                     }
                                 } else {
                                     req.respond(HistoryResponse::GetGen(None));
                                 }
                             }
-                        },
-                        HistoryRequest::GetDiff(ref_gen, target_gen, blocking) => {
-                            match self.get_diff(*ref_gen, *target_gen) {
-                                Some(diff) => {
-                                    req.respond(HistoryResponse::GetDiff(Some(diff)));
-                                }
-                                None => {
-                                    if *blocking {
-                                        loop {
-                                            match endpoint.wait_for_simple_msg() {
-                                                HistoryRequest::Push(grid) => {
-                                                    self.push(grid);
-                                                    if let Some(response_diff) =
-                                                        self.get_diff(*ref_gen, *target_gen)
-                                                    {
-                                                        req.respond(HistoryResponse::GetDiff(
-                                                            Some(response_diff),
-                                                        ));
-                                                        break;
-                                                    }
-                                                }
-                                                _ => panic!(ERR_INCOMPATIBLE_MAIL_TYPE),
-                                            }
-                                        }
-                                    } else {
-                                        req.respond(HistoryResponse::GetGen(None));
-                                    }
-                                }
-                            }
                         }
-                        _ => panic!(ERR_INCOMPATIBLE_MAIL_TYPE),
                     }
-                }
+                    _ => panic!(ERR_INCOMPATIBLE_MAIL_TYPE),
+                },
                 MailType::DeadChannel => break,
             }
         });
