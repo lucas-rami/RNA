@@ -199,10 +199,10 @@ impl<U: Universe> Simulator for AsyncSimulator<U> {
     }
 
     fn get_generation(&self, gen: usize) -> Option<Self::U> {
-        if gen < self.max_gen {
-            None
-        } else {
+        if gen <= self.max_gen {
             self.get_generation_blocking(gen, true)
+        } else {
+            None
         }
     }
 
@@ -297,7 +297,7 @@ impl<U: Universe> UniverseHistory<U> {
 
     pub fn get_diff(&self, ref_gen: usize, target_gen: usize) -> Option<U::Diff> {
         if target_gen < ref_gen {
-            panic!("Base generation should be smaller than target generation.");
+            panic!(ERR_INCORRECT_DIFF);
         }
         if self.diffs.len() < target_gen {
             None
@@ -321,16 +321,17 @@ impl<U: Universe> UniverseHistory<U> {
                         None => {
                             if blocking {
                                 loop {
-                                    if let HistoryRequest::Push(grid) = endpoint.wait_for_msg() {
-                                        self.push(grid);
-                                        if let Some(response_grid) = self.get_gen(gen) {
-                                            req.respond(HistoryResponse::GetGen(Some(
-                                                response_grid,
-                                            )));
-                                            break;
+                                    match endpoint.wait_for_msg() {
+                                        HistoryRequest::Push(grid) => {
+                                            self.push(grid);
+                                            if let Some(response_grid) = self.get_gen(gen) {
+                                                req.respond(HistoryResponse::GetGen(Some(
+                                                    response_grid,
+                                                )));
+                                                break;
+                                            }
                                         }
-                                    } else {
-                                        panic!(ERR_INCOMPATIBLE_MAIL_TYPE);
+                                        _ => panic!(ERR_INCOMPATIBLE_MAIL_TYPE),
                                     }
                                 }
                             } else {
@@ -346,19 +347,19 @@ impl<U: Universe> UniverseHistory<U> {
                             None => {
                                 if blocking {
                                     loop {
-                                        if let HistoryRequest::Push(grid) = endpoint.wait_for_msg()
-                                        {
-                                            self.push(grid);
-                                            if let Some(response_diff) =
-                                                self.get_diff(ref_gen, target_gen)
-                                            {
-                                                req.respond(HistoryResponse::GetDiff(Some(
-                                                    response_diff,
-                                                )));
-                                                break;
+                                        match endpoint.wait_for_msg() {
+                                            HistoryRequest::Push(grid) => {
+                                                self.push(grid);
+                                                if let Some(response_diff) =
+                                                    self.get_diff(ref_gen, target_gen)
+                                                {
+                                                    req.respond(HistoryResponse::GetDiff(Some(
+                                                        response_diff,
+                                                    )));
+                                                    break;
+                                                }
                                             }
-                                        } else {
-                                            panic!(ERR_INCOMPATIBLE_MAIL_TYPE);
+                                            _ => panic!(ERR_INCOMPATIBLE_MAIL_TYPE),
                                         }
                                     }
                                 } else {
@@ -389,3 +390,4 @@ pub enum HistoryResponse<U: Universe> {
 const ERR_INCOMPATIBLE_MAIL_TYPE: &str =
     "The received HistoryRequest is incompatible with the MailType it's included in.";
 const ERR_INCORRECT_RESPONSE: &str = "The received response is incompatible with the sent request.";
+const ERR_INCORRECT_DIFF: &str = "Base generation should be smaller than target generation.";
