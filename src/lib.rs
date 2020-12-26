@@ -82,67 +82,43 @@ compile_automaton_shaders! {
 #[cfg(test)]
 mod tests {
 
-    use crate::game_of_life::GameOfLife;
-    use crate::universe::grid2d::static_2d_grid::Static2DGrid;
-    use crate::universe::grid2d::{Position2D, Size2D};
-    use crate::universe::simulator::{SyncSimulator, AsyncSimulator};
-    use crate::universe::{Simulator, Universe};
+    use crate::game_of_life;
+    use crate::universe::simulator::{AsyncSimulator, SyncSimulator};
+    use crate::universe::Simulator;
 
     #[test]
     fn simple_sync_cpu() {
-        // Creates a simple Game of Life's horizontal blinker in a 5x5 grid
-        let mut start_universe = Static2DGrid::new_empty(Size2D(5, 5));
-        start_universe.set(Position2D(1, 2), GameOfLife::Alive);
-        start_universe.set(Position2D(2, 2), GameOfLife::Alive);
-        start_universe.set(Position2D(3, 2), GameOfLife::Alive);
+        // Creates a simple Game of Life's blinker
+        let blinker = game_of_life::blinker();
 
         // Run automaton for 2 generation (the blinker's period)
-        let mut simulator = SyncSimulator::cpu_backend(start_universe, 10);
+        let mut simulator = SyncSimulator::cpu_backend(blinker, 10);
         simulator.run(2);
 
-        // Check that the blinker switched to vertical
-        let updated_universe = simulator.get_generation(1).unwrap();
-        assert_eq!(GameOfLife::Alive, *updated_universe.get(Position2D(2, 1)));
-        assert_eq!(GameOfLife::Alive, *updated_universe.get(Position2D(2, 2)));
-        assert_eq!(GameOfLife::Alive, *updated_universe.get(Position2D(2, 3)));
-        assert_eq!(GameOfLife::Dead, *updated_universe.get(Position2D(1, 2)));
-        assert_eq!(GameOfLife::Dead, *updated_universe.get(Position2D(3, 2)));
+        // Check that the blinker flipped correctly
+        let updated_blinker = simulator.get_generation(1).unwrap();
+        assert!(game_of_life::is_blinker(&updated_blinker, true));
 
-        // Check that the blinker switched back to horizontal
-        let updated_universe = simulator.get_generation(2).unwrap();
-        assert_eq!(GameOfLife::Alive, *updated_universe.get(Position2D(1, 2)));
-        assert_eq!(GameOfLife::Alive, *updated_universe.get(Position2D(2, 2)));
-        assert_eq!(GameOfLife::Alive, *updated_universe.get(Position2D(3, 2)));
-        assert_eq!(GameOfLife::Dead, *updated_universe.get(Position2D(2, 1)));
-        assert_eq!(GameOfLife::Dead, *updated_universe.get(Position2D(2, 3)));
+        // Check that the blinker flipped back to its original shape
+        let updated_blinker = simulator.get_generation(2).unwrap();
+        assert!(game_of_life::is_blinker(&updated_blinker, false));
     }
 
     #[test]
     fn simple_async_cpu() {
-        // Creates a simple Game of Life's horizontal blinker in a 5x5 grid
-        let mut start_universe = Static2DGrid::new_empty(Size2D(5, 5));
-        start_universe.set(Position2D(1, 2), GameOfLife::Alive);
-        start_universe.set(Position2D(2, 2), GameOfLife::Alive);
-        start_universe.set(Position2D(3, 2), GameOfLife::Alive);
+        // Creates a simple Game of Life's blinker
+        let blinker = game_of_life::blinker();
 
         // Run automaton for 2 generation (the blinker's period)
-        let mut simulator = AsyncSimulator::cpu_backend(start_universe, 10);
+        let mut simulator = AsyncSimulator::cpu_backend(blinker, 10);
         simulator.run(2);
 
-        // Check that the blinker switched to vertical
-        let updated_universe = simulator.get_generation(1).unwrap();
-        assert_eq!(GameOfLife::Alive, *updated_universe.get(Position2D(2, 1)));
-        assert_eq!(GameOfLife::Alive, *updated_universe.get(Position2D(2, 2)));
-        assert_eq!(GameOfLife::Alive, *updated_universe.get(Position2D(2, 3)));
-        assert_eq!(GameOfLife::Dead, *updated_universe.get(Position2D(1, 2)));
-        assert_eq!(GameOfLife::Dead, *updated_universe.get(Position2D(3, 2)));
+        // Check that the blinker flipped correctly
+        let updated_blinker = simulator.get_generation(1).unwrap();
+        assert!(game_of_life::is_blinker(&updated_blinker, true));
 
-        // Check that the blinker switched back to horizontal
-        let updated_universe = simulator.get_generation(2).unwrap();
-        assert_eq!(GameOfLife::Alive, *updated_universe.get(Position2D(1, 2)));
-        assert_eq!(GameOfLife::Alive, *updated_universe.get(Position2D(2, 2)));
-        assert_eq!(GameOfLife::Alive, *updated_universe.get(Position2D(3, 2)));
-        assert_eq!(GameOfLife::Dead, *updated_universe.get(Position2D(2, 1)));
-        assert_eq!(GameOfLife::Dead, *updated_universe.get(Position2D(2, 3)));
+        // Check that the blinker flipped back to its original shape
+        let updated_blinker = simulator.get_generation(2).unwrap();
+        assert!(game_of_life::is_blinker(&updated_blinker, false));
     }
 }

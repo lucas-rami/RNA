@@ -2,9 +2,16 @@
 use crossterm::style::{style, Attribute, Color, StyledContent};
 
 // CELL
-use crate::automaton::{AutomatonCell, CPUCell, TermDrawableAutomaton};
-use crate::universe::grid2d::{Neighbor2D, MOORE_NEIGHBORHOOD};
-use crate::universe::CPUUniverse;
+use crate::{
+    automaton::{AutomatonCell, CPUCell, TermDrawableAutomaton},
+    universe::{
+        grid2d::{
+            {static_2d_grid::Static2DGrid, Position2D, Size2D},
+            {Neighbor2D, MOORE_NEIGHBORHOOD},
+        },
+        {CPUUniverse, Universe},
+    },
+};
 
 #[derive(Copy, Clone, Eq, PartialEq, std::hash::Hash, std::fmt::Debug)]
 pub enum GameOfLife {
@@ -83,6 +90,40 @@ impl TermDrawableAutomaton for GameOfLife {
             GameOfLife::Alive => style('#').with(Color::Green).attribute(Attribute::Bold),
         }
     }
+}
+
+pub fn blinker() -> Static2DGrid<GameOfLife> {
+    let mut blinker = Static2DGrid::new_empty(Size2D(5, 5));
+    blinker.set(Position2D(1, 2), GameOfLife::Alive);
+    blinker.set(Position2D(2, 2), GameOfLife::Alive);
+    blinker.set(Position2D(3, 2), GameOfLife::Alive);
+    blinker
+}
+
+pub fn is_blinker(grid: &Static2DGrid<GameOfLife>, flipped: bool) -> bool {
+    let cell_is_valid = |pos| {
+        let cell = grid.get(pos);
+        if flipped {
+            if pos.1 >= 1 && pos.1 <= 3 && pos.0 == 2 {
+                return *cell == GameOfLife::Alive;
+            }
+        } else {
+            if pos.0 >= 1 && pos.0 <= 3 && pos.1 == 2 {
+                return *cell == GameOfLife::Alive;
+            }
+        }
+        *cell == GameOfLife::Dead
+    };
+
+    // Check that every cell is valid
+    for col_iter in grid.iter() {
+        for (pos, _cell) in col_iter {
+            if !cell_is_valid(pos) {
+                return false;
+            }
+        } 
+    }
+    true
 }
 
 // pub fn gosper_glider_gun() -> Grid<GameOfLife> {
