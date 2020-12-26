@@ -20,6 +20,10 @@ use crate::universe::{
     CPUUniverse, GPUUniverse, ShaderInfo, Universe, UniverseAutomatonShader, UniverseDiff,
 };
 
+const DISPATCH_LAYOUT: (usize, usize, usize) = (8, 8, 1);
+
+/// Static2DGrid
+
 pub struct Static2DGrid<C: AutomatonCell> {
     data: Vec<C>,
     size: Size2D,
@@ -31,7 +35,7 @@ pub struct Static2DGrid<C: AutomatonCell> {
 impl<C: AutomatonCell<Neighbor = Neighbor2D>> Static2DGrid<C> {
     pub fn new(data: Vec<C>, size: Size2D) -> Self {
         if data.len() != size.total() {
-            panic!("Vector length does not correspond to Size2D.")
+            panic!(ERR_DIMENSIONS_SIZE)
         }
 
         // Determine the required margin around the actual data
@@ -69,6 +73,20 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> Static2DGrid<C> {
 
         Self {
             data: full_data,
+            size,
+            size_with_margin,
+            margin,
+            gpu: None,
+        }
+    }
+
+    pub fn new_empty(size: Size2D) -> Self {
+        // Determine the required margin around the actual data
+        let margin = Static2DGrid::<C>::compute_margin();
+        let size_with_margin = Size2D(size.0 + (margin << 1), size.1 + (margin << 1));
+
+        Self {
+            data: vec![C::default(); size_with_margin.total()],
             size,
             size_with_margin,
             margin,
@@ -115,13 +133,8 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> Static2DGrid<C> {
     }
 
     #[inline]
-    pub fn iter(&self) -> Static2DGridIterator<C> {
-        Static2DGridIterator::new(self)
-    }
-
-    #[inline]
-    fn get_unchecked(&self, idx: usize) -> &C {
-        &self.data[idx]
+    pub fn iter(&self) -> LineIterator<C> {
+        LineIterator::new(self)
     }
 
     fn move_grid_info(self, new_data: Vec<C>) -> Self {
@@ -161,14 +174,24 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> Universe for Static2DGrid<C> {
         &self.data[real_pos.idx(&self.size_with_margin)]
     }
 
+    fn set(&mut self, pos: Self::Position, val: Self::Cell) {
+        let real_pos = Position2D(pos.0 + self.margin, pos.1 + self.margin);
+        self.data[real_pos.idx(&self.size_with_margin)] = val;
+    }
+
     fn neighbor(&self, pos: &Self::Position, nbor: &Self::Neighbor) -> &Self::Cell {
-        let offset = nbor.0 + nbor.1 * self.size_with_margin.0 as i32;
-        let idx = pos.idx(&self.size_with_margin);
-        if offset < 0 {
-            &self.data[idx - offset.abs() as usize]
+        let mut real_pos = Position2D(pos.0 + self.margin, pos.1 + self.margin);
+        if nbor.0 <= 0 {
+            real_pos.0 -= nbor.0.abs() as usize;
         } else {
-            &self.data[idx + offset as usize]
+            real_pos.0 += nbor.0 as usize;
         }
+        if nbor.1 <= 0 {
+            real_pos.1 -= nbor.1.abs() as usize;
+        } else {
+            real_pos.1 += nbor.1 as usize;
+        }
+        &self.data[real_pos.idx(&self.size_with_margin)]
     }
 
     fn diff(&self, other: &Self) -> Self::Diff {
@@ -188,10 +211,13 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> Universe for Static2DGrid<C> {
 impl<C: CPUCell<Neighbor = Neighbor2D>> CPUUniverse for Static2DGrid<C> {
     fn evolve_once(self) -> Self {
         // Compute new grid
-        let mut new_data = Vec::with_capacity(self.data.len());
-        for (pos, cell) in self.iter() {
-            let new_cell = cell.update(&self, &pos);
-            new_data.push(new_cell);
+        let mut new_data = vec![C::default(); self.size_with_margin.total()];
+        for col_iter in self.iter() {
+            for (pos, cell) in col_iter {
+                let new_cell = cell.update(&self, &pos);
+                let real_pos = Position2D(pos.0 + self.margin, pos.1 + self.margin);
+                new_data[real_pos.idx(&self.size_with_margin)] = new_cell;
+            }
         }
 
         self.move_grid_info(new_data)
@@ -239,45 +265,68 @@ impl<C: AutomatonCell> Clone for Static2DGrid<C> {
     }
 }
 
-pub struct Static2DGridIterator<'a, C: AutomatonCell> {
+/// LineIterator
+
+pub struct LineIterator<'a, C: AutomatonCell> {
+    grid: &'a Static2DGrid<C>,
+    line_idx: usize,
+}
+
+impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> LineIterator<'a, C> {
+    fn new(grid: &'a Static2DGrid<C>) -> Self {
+        Self { grid, line_idx: 0 }
+    }
+}
+
+impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> Iterator for LineIterator<'a, C> {
+    type Item = ColumnIterator<'a, C>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.line_idx < self.grid.size.1 {
+            let col_iterator = ColumnIterator::new(self.grid, self.line_idx);
+            self.line_idx += 1;
+            Some(col_iterator)
+        } else {
+            None
+        }
+    }
+}
+
+/// ColumnIterator
+
+pub struct ColumnIterator<'a, C: AutomatonCell> {
     grid: &'a Static2DGrid<C>,
     pos: Position2D,
     idx: usize,
 }
 
-impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> Static2DGridIterator<'a, C> {
-    fn new(grid: &'a Static2DGrid<C>) -> Self {
+impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> ColumnIterator<'a, C> {
+    pub fn new(grid: &'a Static2DGrid<C>, line_idx: usize) -> Self {
         Self {
             grid,
-            pos: Position2D(0, 0),
-            idx: grid.margin * grid.size_with_margin.0 + grid.margin,
+            pos: Position2D(0, line_idx),
+            idx: (line_idx + grid.margin) * grid.size_with_margin.0 + grid.margin,
         }
     }
 }
 
-impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> Iterator for Static2DGridIterator<'a, C> {
+impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> Iterator for ColumnIterator<'a, C> {
     type Item = (Position2D, &'a C);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let pos = self.pos;
-        let idx = self.idx;
-
-        // Update pos and idx
-        if self.pos.1 == self.grid.size.1 {
-            return None;
-        } else if self.pos.0 == self.grid.size.0 - 1 {
-            self.pos.0 = 0;
-            self.pos.1 += 1;
-            self.idx += 2 * self.grid.margin + 1;
-        } else {
+        if self.pos.0 < self.grid.size.0 {
+            let ret_pos = self.pos;
+            let cell = &self.grid.data[self.idx];
             self.pos.0 += 1;
             self.idx += 1;
+            Some((ret_pos, cell))
+        } else {
+            None
         }
-
-        let cell = self.grid.get_unchecked(idx);
-        Some((pos, cell))
     }
 }
+
+/// GridDiff
 
 #[derive(Debug, Clone)]
 pub struct GridDiff<C: AutomatonCell> {
@@ -286,15 +335,14 @@ pub struct GridDiff<C: AutomatonCell> {
 
 impl<C: AutomatonCell<Neighbor = Neighbor2D>> GridDiff<C> {
     pub fn new(prev_grid: &Static2DGrid<C>, next_grid: &Static2DGrid<C>) -> Self {
-        let size = prev_grid.size();
-        if size != next_grid.size() {
-            panic!("Both grids should be the same dimensions!")
+        if prev_grid.size() != next_grid.size() {
+            panic!(ERR_WRONG_DIMENSIONS)
         }
 
         let mut modifs = HashMap::new();
-        for idx in 0..size.total() {
-            let prev = prev_grid.get_unchecked(idx);
-            let next = next_grid.get_unchecked(idx);
+        for idx in 0..prev_grid.data.len() {
+            let prev = &prev_grid.data[idx];
+            let next = &next_grid.data[idx];
             if prev != next {
                 modifs.insert(idx, *next);
             }
@@ -327,7 +375,7 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> UniverseDiff for GridDiff<C> {
     }
 }
 
-const DISPATCH_LAYOUT: (usize, usize, usize) = (8, 8, 1);
+/// GPUCompute
 
 #[derive(Clone)]
 struct GPUCompute<C: AutomatonCell> {
@@ -574,6 +622,8 @@ where
     }
 }
 
+/// ComputeNode
+
 #[derive(Clone)]
 struct ComputeNode<C: AutomatonCell> {
     device: Arc<Device>,
@@ -689,6 +739,8 @@ impl<C: AutomatonCell> ComputeNode<C> {
     }
 }
 
+/// PushConstants
+
 #[repr(C)]
 struct PushConstants {
     width: u32,
@@ -699,3 +751,5 @@ struct PushConstants {
 const ERR_NB_NODES: &str = "The number of compute nodes should be strictly greater than 1.";
 const ERR_DECODED_SIZE: &str =
     "The size of decoded data doesn't correspond to the indicated grid size.";
+const ERR_WRONG_DIMENSIONS: &str = "Both grids should be the same dimensions!";
+const ERR_DIMENSIONS_SIZE: &str = "Vector length does not correspond to Size2D.";

@@ -84,18 +84,36 @@ mod tests {
 
     use crate::game_of_life::GameOfLife;
     use crate::universe::grid2d::static_2d_grid::Static2DGrid;
-    use crate::universe::grid2d::Size2D;
-    use crate::universe::simulator::SyncSimulator;
+    use crate::universe::grid2d::{Position2D, Size2D};
+    use crate::universe::simulator::{SyncSimulator, AsyncSimulator};
+    use crate::universe::{Simulator, Universe};
 
     #[test]
-    fn it_works() {
-        let data = vec![
-            GameOfLife::Alive,
-            GameOfLife::Alive,
-            GameOfLife::Dead,
-            GameOfLife::Dead,
-        ];
-        let start_universe = Static2DGrid::new(data, Size2D(2, 2));
-        let _simulator = SyncSimulator::gpu_backend(start_universe, 10);
+    fn simple_sync_cpu() {
+        // Creates a simple Game of Life's horizontal blinker in a 5x5 grid
+        let mut start_universe = Static2DGrid::new_empty(Size2D(5, 5));
+        start_universe.set(Position2D(1, 2), GameOfLife::Alive);
+        start_universe.set(Position2D(2, 2), GameOfLife::Alive);
+        start_universe.set(Position2D(3, 2), GameOfLife::Alive);
+
+        // Run automaton for 2 generation (the blinker's period)
+        let mut simulator = SyncSimulator::cpu_backend(start_universe, 10);
+        simulator.run(2);
+
+        // Check that the blinker switched to vertical
+        let updated_universe = simulator.get_generation(1).unwrap();
+        assert_eq!(GameOfLife::Alive, *updated_universe.get(Position2D(2, 1)));
+        assert_eq!(GameOfLife::Alive, *updated_universe.get(Position2D(2, 2)));
+        assert_eq!(GameOfLife::Alive, *updated_universe.get(Position2D(2, 3)));
+        assert_eq!(GameOfLife::Dead, *updated_universe.get(Position2D(1, 2)));
+        assert_eq!(GameOfLife::Dead, *updated_universe.get(Position2D(3, 2)));
+
+        // Check that the blinker switched back to horizontal
+        let updated_universe = simulator.get_generation(2).unwrap();
+        assert_eq!(GameOfLife::Alive, *updated_universe.get(Position2D(1, 2)));
+        assert_eq!(GameOfLife::Alive, *updated_universe.get(Position2D(2, 2)));
+        assert_eq!(GameOfLife::Alive, *updated_universe.get(Position2D(3, 2)));
+        assert_eq!(GameOfLife::Dead, *updated_universe.get(Position2D(2, 1)));
+        assert_eq!(GameOfLife::Dead, *updated_universe.get(Position2D(2, 3)));
     }
 }

@@ -22,6 +22,8 @@ pub trait Universe: Clone + Sized + Send + 'static {
 
     fn get(&self, pos: Self::Position) -> &Self::Cell;
 
+    fn set(&mut self, pos: Self::Position, val: Self::Cell);
+
     fn neighbor(&self, pos: &Self::Position, nbor: &Self::Neighbor) -> &Self::Cell;
 
     fn diff(&self, other: &Self) -> Self::Diff;

@@ -22,6 +22,12 @@ impl Size2D {
     }
 }
 
+impl From<(usize, usize)> for Size2D {
+    fn from(tuple: (usize, usize)) -> Self {
+        Size2D(tuple.0, tuple.1)
+    }
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Position2D(pub usize, pub usize);
 
@@ -36,6 +42,13 @@ impl Position2D {
         self.0 + self.1 * size.0
     }
 }
+
+impl From<(usize, usize)> for Position2D {
+    fn from(tuple: (usize, usize)) -> Self {
+        Position2D(tuple.0, tuple.1)
+    }
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Neighbor2D(pub i32, pub i32);
 
