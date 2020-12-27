@@ -5,6 +5,7 @@ use std::fmt::Debug;
 use crossterm::style::StyledContent;
 
 // CELL
+pub mod game_of_life;
 use crate::universe::CPUUniverse;
 
 pub trait AutomatonCell: Copy + Debug + Default + Eq + PartialEq + Send + Sync + 'static {
