@@ -9,7 +9,6 @@ use vulkano::pipeline::ComputePipelineAbstract;
 // CELL
 pub mod grid2d;
 pub mod simulator;
-use crate::advanced_channels::TransmittingEnd;
 use crate::automaton::{AutomatonCell, CPUCell, GPUCell};
 
 /// Universe
@@ -31,27 +30,28 @@ pub trait Universe: Clone + Sized + Send + 'static {
     fn apply_diff(self, diff: &Self::Diff) -> Self;
 }
 
+
 pub trait CPUUniverse: Universe
 where
     Self::Cell: CPUCell,
 {
-    fn evolve(self, nb_gens: usize) -> Self {
+    fn cpu_evolve(self, nb_gens: usize) -> Self {
         let mut universe = self;
         for _ in 0..nb_gens {
-            universe = universe.evolve_once();
+            universe = universe.cpu_evolve_once();
         }
         universe
     }
 
-    fn evolve_once(self) -> Self {
-        self.evolve(1)
+    fn cpu_evolve_once(self) -> Self {
+        self.cpu_evolve(1)
     }
 
-    fn evolve_mailbox<T: TransmittingEnd<MSG = Self>>(self, nb_gens: usize, mailbox: &T) -> Self {
+    fn cpu_evolve_callback(self, nb_gens: usize, callback: impl Fn(&Self) -> ()) -> Self {
         let mut universe = self;
         for _ in 0..nb_gens {
-            universe = universe.evolve_once();
-            mailbox.send(universe.clone());
+            universe = universe.cpu_evolve_once();
+            callback(&universe);
         }
         universe
     }
@@ -61,38 +61,38 @@ pub trait GPUUniverse: Universe
 where
     Self::Cell: GPUCell,
 {
-    fn evolve(self, nb_gens: usize) -> Self {
+    fn gpu_evolve(self, nb_gens: usize) -> Self {
         let mut universe = self;
         for _ in 0..nb_gens {
-            universe = universe.evolve_once();
+            universe = universe.gpu_evolve_once();
         }
         universe
     }
 
-    fn evolve_once(self) -> Self {
-        self.evolve(1)
+    fn gpu_evolve_once(self) -> Self {
+        self.gpu_evolve(1)
     }
 
-    fn evolve_mailbox<T: TransmittingEnd<MSG = Self>>(self, nb_gens: usize, mailbox: &T) -> Self {
+    fn gpu_evolve_callback(self, nb_gens: usize, callback: impl Fn(&Self)) -> Self {
         let mut universe = self;
         for _ in 0..nb_gens {
-            universe = universe.evolve_once();
-            mailbox.send(universe.clone());
+            universe = universe.gpu_evolve_once();
+            callback(&universe);
         }
         universe
     }
-}
-
-pub trait UniverseAutomatonShader<C: AutomatonCell>:
-    Universe<Cell = C, Neighbor = C::Neighbor>
-{
-    fn shader_info(device: &Arc<Device>) -> ShaderInfo;
 }
 
 #[derive(Clone)]
 pub struct ShaderInfo {
     pub layout: Arc<UnsafeDescriptorSetLayout>,
     pub pipeline: Arc<Box<dyn ComputePipelineAbstract + Send + Sync + 'static>>,
+}
+
+pub trait UniverseAutomatonShader<C: AutomatonCell>:
+    Universe<Cell = C, Neighbor = C::Neighbor>
+{
+    fn shader_info(device: &Arc<Device>) -> ShaderInfo;
 }
 
 /// UniverseDiff
@@ -121,8 +121,6 @@ pub trait Simulator {
     type U: Universe;
 
     fn run(&mut self, nb_gens: usize);
-
-    fn reset(&mut self, start_universe: &Self::U);
 
     fn get_highest_generation(&self) -> usize;
 

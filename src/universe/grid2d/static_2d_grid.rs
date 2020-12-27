@@ -14,7 +14,6 @@ use vulkano::sync::{self, GpuFuture, NowFuture};
 
 // CELL
 use super::{Neighbor2D, Position2D, Size2D};
-use crate::advanced_channels::TransmittingEnd;
 use crate::automaton::{AutomatonCell, CPUCell, GPUCell};
 use crate::universe::{
     CPUUniverse, GPUUniverse, ShaderInfo, Universe, UniverseAutomatonShader, UniverseDiff,
@@ -209,7 +208,7 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> Universe for Static2DGrid<C> {
 }
 
 impl<C: CPUCell<Neighbor = Neighbor2D>> CPUUniverse for Static2DGrid<C> {
-    fn evolve_once(self) -> Self {
+    fn cpu_evolve_once(self) -> Self {
         // Compute new grid
         let mut new_data = vec![C::default(); self.size_with_margin.total()];
         for col_iter in self.iter() {
@@ -240,16 +239,12 @@ impl<C: GPUCell<Neighbor = Neighbor2D>> GPUUniverse for Static2DGrid<C>
 where
     Static2DGrid<C>: UniverseAutomatonShader<C>,
 {
-    fn evolve(mut self, nb_gens: usize) -> Self {
+    fn gpu_evolve(mut self, nb_gens: usize) -> Self {
         self.get_gpu_handle().run(nb_gens)
     }
 
-    fn evolve_mailbox<T: TransmittingEnd<MSG = Self>>(
-        mut self,
-        nb_gens: usize,
-        mailbox: &T,
-    ) -> Self {
-        self.get_gpu_handle().run_mailbox(nb_gens, mailbox)
+    fn gpu_evolve_callback(mut self, nb_gens: usize, callback: impl Fn(&Self)) -> Self {
+        self.get_gpu_handle().run_mailbox(nb_gens, callback)
     }
 }
 
@@ -526,7 +521,7 @@ where
     fn run_mailbox(
         &mut self,
         nb_gens: usize,
-        mailbox: &impl TransmittingEnd<MSG = Static2DGrid<C>>,
+        callback: impl Fn(&Static2DGrid<C>) -> (),
     ) -> Static2DGrid<C> {
         // Total number of compute nodes
         let nb_nodes = self.nodes.len();
@@ -592,11 +587,9 @@ where
                         // Transform raw data into Grid and send to mailbox
                         let encoded = Arc::clone(&self.nodes[idx].cpu_out);
                         let new_grid = Static2DGrid::decode(encoded, self.size);
+                        callback(&new_grid);
                         if launch_cnt == 0 && cpy_futures.len() == 0 {
-                            mailbox.send(new_grid.clone());
                             return new_grid;
-                        } else {
-                            mailbox.send(new_grid);
                         }
                     }
                     None => break,
