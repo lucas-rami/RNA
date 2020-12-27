@@ -101,8 +101,7 @@ pub fn blinker() -> Static2DGrid<GameOfLife> {
 }
 
 pub fn is_blinker(grid: &Static2DGrid<GameOfLife>, flipped: bool) -> bool {
-    let cell_is_valid = |pos| {
-        let cell = grid.get(pos);
+    let cell_is_valid = |pos: Position2D, cell: &GameOfLife| {
         if flipped {
             if pos.1 >= 1 && pos.1 <= 3 && pos.0 == 2 {
                 return *cell == GameOfLife::Alive;
@@ -117,13 +116,58 @@ pub fn is_blinker(grid: &Static2DGrid<GameOfLife>, flipped: bool) -> bool {
 
     // Check that every cell is valid
     for col_iter in grid.iter() {
-        for (pos, _cell) in col_iter {
-            if !cell_is_valid(pos) {
+        for (pos, cell) in col_iter {
+            if !cell_is_valid(pos, cell) {
                 return false;
             }
-        } 
+        }
     }
     true
+}
+
+const PENTA_DECATHLON_ALIVE_SET: [Position2D; 18] = [
+    Position2D(3, 6),
+    Position2D(3, 7),
+    Position2D(3, 8),
+    Position2D(3, 9),
+    Position2D(3, 10),
+    Position2D(3, 11),
+    Position2D(7, 6),
+    Position2D(7, 7),
+    Position2D(7, 8),
+    Position2D(7, 9),
+    Position2D(7, 10),
+    Position2D(7, 11),
+    Position2D(4, 5),
+    Position2D(5, 4),
+    Position2D(6, 5),
+    Position2D(4, 12),
+    Position2D(5, 13),
+    Position2D(6, 12),
+];
+
+pub fn penta_decathlon() -> Static2DGrid<GameOfLife> {
+    let mut penta_decathlon = Static2DGrid::new_empty(Size2D(11, 18));
+    for pos in &PENTA_DECATHLON_ALIVE_SET {
+        penta_decathlon.set(*pos, GameOfLife::Alive);
+    }
+    penta_decathlon
+}
+
+pub fn is_penta_decathlon(grid: &Static2DGrid<GameOfLife>) -> bool {
+    let mut nb_alives = PENTA_DECATHLON_ALIVE_SET.len();
+    for col_iter in grid.iter() {
+        for (pos, cell) in col_iter {
+            if *cell == GameOfLife::Alive {
+                if PENTA_DECATHLON_ALIVE_SET.contains(&pos) && nb_alives != 0 {
+                    nb_alives -= 1;
+                } else {
+                    return false;
+                }
+            }
+        }
+    }
+    nb_alives == 0
 }
 
 // pub fn gosper_glider_gun() -> Grid<GameOfLife> {

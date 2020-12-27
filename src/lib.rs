@@ -121,4 +121,40 @@ mod tests {
         let updated_blinker = simulator.get_generation(2).unwrap();
         assert!(game_of_life::is_blinker(&updated_blinker, false));
     }
+
+    #[test]
+    fn sync_cpu() {
+        let penta_decathlon = game_of_life::penta_decathlon();
+
+        // Run automaton for 14x15=210 generation (14 times the penta-decathlon's period)
+        let mut simulator = AsyncSimulator::cpu_backend(penta_decathlon, 10);
+        simulator.run(210);
+
+        // Check that the penta-decathlon was updated correctly: each intermediate generation between new periods should be
+        // different from the original grid, and the final grid should be identical to the original
+        for i in 0..14 {
+            let intermediate = simulator.get_generation(i * 16 + 1).unwrap();
+            assert!(!game_of_life::is_penta_decathlon(&intermediate));
+        }
+        let penta_decathlon = simulator.get_generation(210).unwrap();
+        assert!(game_of_life::is_penta_decathlon(&penta_decathlon));
+    }
+
+    #[test]
+    fn async_cpu() {
+        let penta_decathlon = game_of_life::penta_decathlon();
+
+        // Run automaton for 14x15=210 generation (14 times the penta-decathlon's period)
+        let mut simulator = AsyncSimulator::cpu_backend(penta_decathlon, 10);
+        simulator.run(210);
+
+        // Check that the penta-decathlon was updated correctly: each intermediate generation between new periods should be
+        // different from the original grid, and the final grid should be identical to the original
+        for i in 0..14 {
+            let intermediate = simulator.get_generation(i * 16 + 1).unwrap();
+            assert!(!game_of_life::is_penta_decathlon(&intermediate));
+        }
+        let penta_decathlon = simulator.get_generation(210).unwrap();
+        assert!(game_of_life::is_penta_decathlon(&penta_decathlon));
+    }
 }

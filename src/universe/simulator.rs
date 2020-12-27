@@ -4,8 +4,8 @@ use std::thread;
 // CELL
 use super::{CPUUniverse, GPUUniverse, Simulator, Universe, UniverseDiff};
 use crate::advanced_channels::{
-    oneway_channel, twoway_channel, MailType, MasterEndpoint, SimpleSender,
-    SlaveEndpoint, TransmittingEnd,
+    oneway_channel, twoway_channel, MailType, MasterEndpoint, SimpleSender, SlaveEndpoint,
+    TransmittingEnd,
 };
 use crate::automaton::{CPUCell, GPUCell};
 
@@ -155,17 +155,21 @@ where
         let (runner_op_sender, runner_op_receiver) = oneway_channel();
         let (history_master, history_slave) = twoway_channel();
         let history_data_sender = history_master.create_third_party();
-   
+
         // Start a thread to manage the universe's history
         UniverseHistory::new(start_universe.clone(), f_check).detach(history_slave);
-        
+
         // Start a thread to handle run commands
         thread::spawn(move || {
             let mut current_universe = start_universe;
-            let callback = |universe: &U| history_data_sender.send(HistoryRequest::Push(universe.clone()));
+            let callback =
+                |universe: &U| history_data_sender.send(HistoryRequest::Push(universe.clone()));
             loop {
                 match runner_op_receiver.wait_for_mail() {
-                    Ok(nb_gens) => current_universe = U::cpu_evolve_callback(current_universe, nb_gens, callback),
+                    Ok(nb_gens) => {
+                        current_universe =
+                            U::cpu_evolve_callback(current_universe, nb_gens, callback)
+                    }
                     Err(_) => break, // Simulator died, time to die
                 }
             }
@@ -188,17 +192,21 @@ where
         let (runner_op_sender, runner_op_receiver) = oneway_channel();
         let (history_master, history_slave) = twoway_channel();
         let history_data_sender = history_master.create_third_party();
-   
+
         // Start a thread to manage the universe's history
         UniverseHistory::new(start_universe.clone(), f_check).detach(history_slave);
-        
+
         // Start a thread to handle run commands
         thread::spawn(move || {
             let mut current_universe = start_universe;
-            let callback = |universe: &U| history_data_sender.send(HistoryRequest::Push(universe.clone()));
+            let callback =
+                |universe: &U| history_data_sender.send(HistoryRequest::Push(universe.clone()));
             loop {
                 match runner_op_receiver.wait_for_mail() {
-                    Ok(nb_gens) => current_universe = U::gpu_evolve_callback(current_universe, nb_gens, callback),
+                    Ok(nb_gens) => {
+                        current_universe =
+                            U::gpu_evolve_callback(current_universe, nb_gens, callback)
+                    }
                     Err(_) => break, // Simulator died, time to die
                 }
             }
