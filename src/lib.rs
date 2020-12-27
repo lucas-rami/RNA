@@ -2,6 +2,7 @@
 pub mod advanced_channels;
 pub mod automaton;
 pub mod commands;
+pub mod simulator;
 pub mod universe;
 
 macro_rules! compile_automaton_shaders {
@@ -81,9 +82,10 @@ compile_automaton_shaders! {
 #[cfg(test)]
 mod tests {
 
-    use crate::automaton::game_of_life;
-    use crate::universe::simulator::{AsyncSimulator, SyncSimulator};
-    use crate::universe::Simulator;
+    use crate::{
+        automaton::game_of_life,
+        simulator::{AsyncSimulator, Simulator, SyncSimulator},
+    };
 
     #[test]
     fn simple_sync_cpu() {
