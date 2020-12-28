@@ -13,7 +13,7 @@ use vulkano::{
 };
 
 // CELL
-use super::{Neighbor2D, Coordinates2D, Size2D};
+use super::{Coordinates2D, Neighbor2D, Size2D};
 use crate::{
     automaton::{AutomatonCell, CPUCell, GPUCell},
     universe::{
@@ -152,7 +152,6 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> StaticGrid2D<C> {
 impl<C: AutomatonCell<Neighbor = Neighbor2D>> Universe for StaticGrid2D<C> {
     type Cell = C;
     type Position = Coordinates2D;
-    type Neighbor = Neighbor2D;
     type Diff = GridDiff<C>;
 
     fn get(&self, pos: Self::Position) -> &Self::Cell {
@@ -164,8 +163,11 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> Universe for StaticGrid2D<C> {
         let real_pos = Coordinates2D(pos.0 + self.margin, pos.1 + self.margin);
         self.data[real_pos.idx(&self.size_with_margin)] = val;
     }
-
-    fn neighbor(&self, pos: &Self::Position, nbor: &Self::Neighbor) -> &Self::Cell {
+    fn neighbor(
+        &self,
+        pos: &Self::Position,
+        nbor: &<Self::Cell as AutomatonCell>::Neighbor,
+    ) -> &Self::Cell {
         let mut real_pos = Coordinates2D(pos.0 + self.margin, pos.1 + self.margin);
         if nbor.0 <= 0 {
             real_pos.0 -= nbor.0.abs() as usize;

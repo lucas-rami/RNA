@@ -13,22 +13,24 @@ use crate::automaton::{AutomatonCell, CPUCell, GPUCell};
 /// Universe
 
 pub trait Universe: Clone + Sized + Send + 'static {
-    type Cell: AutomatonCell<Neighbor = Self::Neighbor>;
+    type Cell: AutomatonCell;
     type Position;
-    type Neighbor;
     type Diff: UniverseDiff;
 
     fn get(&self, pos: Self::Position) -> &Self::Cell;
 
     fn set(&mut self, pos: Self::Position, val: Self::Cell);
 
-    fn neighbor(&self, pos: &Self::Position, nbor: &Self::Neighbor) -> &Self::Cell;
+    fn neighbor(
+        &self,
+        pos: &Self::Position,
+        nbor: &<Self::Cell as AutomatonCell>::Neighbor,
+    ) -> &Self::Cell;
 
     fn diff(&self, other: &Self) -> Self::Diff;
 
     fn apply_diff(self, diff: &Self::Diff) -> Self;
 }
-
 
 pub trait CPUUniverse: Universe
 where
@@ -88,9 +90,7 @@ pub struct ShaderInfo {
     pub pipeline: Arc<Box<dyn ComputePipelineAbstract + Send + Sync + 'static>>,
 }
 
-pub trait UniverseAutomatonShader<C: AutomatonCell>:
-    Universe<Cell = C, Neighbor = C::Neighbor>
-{
+pub trait UniverseAutomatonShader<C: AutomatonCell>: Universe<Cell = C> {
     fn shader_info(device: &Arc<Device>) -> ShaderInfo;
 }
 
