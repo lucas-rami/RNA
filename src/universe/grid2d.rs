@@ -13,25 +13,18 @@ pub struct Size2D(pub usize, pub usize);
 
 impl Size2D {
     #[inline]
+    pub fn columns(&self) -> usize {
+        self.0
+    }
+
+    #[inline]
+    pub fn lines(&self) -> usize {
+        self.1
+    }
+
+    #[inline]
     pub fn total(&self) -> usize {
         self.0 * self.1
-    }
-
-    pub fn position(&self, idx: usize) -> Coordinates2D {
-        if idx >= self.total() {
-            panic!(format!(
-                "Index should be less than {}, got {}.",
-                self.total(),
-                idx
-            ));
-        }
-        Coordinates2D(idx % self.0, idx / self.0)
-    }
-}
-
-impl From<(usize, usize)> for Size2D {
-    fn from(tuple: (usize, usize)) -> Self {
-        Size2D(tuple.0, tuple.1)
     }
 }
 
@@ -51,20 +44,14 @@ impl Coordinates2D {
         self.1
     }
 
-    pub fn idx(&self, size: &Size2D) -> usize {
-        if !(self.0 < size.0 && self.1 < size.1) {
+    pub fn to_idx(&self, size: &Size2D) -> usize {
+        if !(self.0 < size.columns() && self.1 < size.lines()) {
             panic!(format!(
                 "Coordinates2D ({:?}) not within Size2D ({:?}).",
                 *self, *size
             ))
         }
-        self.0 + self.1 * size.0
-    }
-}
-
-impl From<(usize, usize)> for Coordinates2D {
-    fn from(tuple: (usize, usize)) -> Self {
-        Coordinates2D(tuple.0, tuple.1)
+        self.0 + self.1 * size.columns()
     }
 }
 
@@ -99,9 +86,19 @@ impl SCoordinates2D {
 /// Neighbor2D
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct Neighbor2D(pub i32, pub i32);
+pub struct Neighbor2D(pub isize, pub isize);
 
 impl Neighbor2D {
+    #[inline]
+    pub fn x(&self) -> isize {
+        self.0
+    }
+
+    #[inline]
+    pub fn y(&self) -> isize {
+        self.1
+    }
+
     pub fn max_one_axis_manhattan_distance(neighborhood: &[Neighbor2D]) -> usize {
         let mut max_manhattan_distance = 0;
         for n in neighborhood {
