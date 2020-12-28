@@ -6,7 +6,7 @@ use crate::{
     automaton::{AutomatonCell, CPUCell, TermDrawableAutomaton},
     universe::{
         grid2d::{
-            {static_2d_grid::Static2DGrid, Position2D, Size2D},
+            {static_grid2d::StaticGrid2D, Position2D, Size2D},
             {Neighbor2D, MOORE_NEIGHBORHOOD},
         },
         {CPUUniverse, Universe},
@@ -92,15 +92,15 @@ impl TermDrawableAutomaton for GameOfLife {
     }
 }
 
-pub fn blinker() -> Static2DGrid<GameOfLife> {
-    let mut blinker = Static2DGrid::new_empty(Size2D(5, 5));
+pub fn blinker() -> StaticGrid2D<GameOfLife> {
+    let mut blinker = StaticGrid2D::new_empty(Size2D(5, 5));
     blinker.set(Position2D(1, 2), GameOfLife::Alive);
     blinker.set(Position2D(2, 2), GameOfLife::Alive);
     blinker.set(Position2D(3, 2), GameOfLife::Alive);
     blinker
 }
 
-pub fn is_blinker(grid: &Static2DGrid<GameOfLife>, flipped: bool) -> bool {
+pub fn is_blinker(grid: &StaticGrid2D<GameOfLife>, flipped: bool) -> bool {
     let cell_is_valid = |pos: Position2D, cell: &GameOfLife| {
         if flipped {
             if pos.1 >= 1 && pos.1 <= 3 && pos.0 == 2 {
@@ -146,15 +146,15 @@ const PENTA_DECATHLON_ALIVE_SET: [Position2D; 18] = [
     Position2D(6, 12),
 ];
 
-pub fn penta_decathlon() -> Static2DGrid<GameOfLife> {
-    let mut penta_decathlon = Static2DGrid::new_empty(Size2D(11, 18));
+pub fn penta_decathlon() -> StaticGrid2D<GameOfLife> {
+    let mut penta_decathlon = StaticGrid2D::new_empty(Size2D(11, 18));
     for pos in &PENTA_DECATHLON_ALIVE_SET {
         penta_decathlon.set(*pos, GameOfLife::Alive);
     }
     penta_decathlon
 }
 
-pub fn is_penta_decathlon(grid: &Static2DGrid<GameOfLife>) -> bool {
+pub fn is_penta_decathlon(grid: &StaticGrid2D<GameOfLife>) -> bool {
     let mut nb_alives = PENTA_DECATHLON_ALIVE_SET.len();
     for col_iter in grid.iter() {
         for (pos, cell) in col_iter {

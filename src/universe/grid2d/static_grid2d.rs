@@ -21,9 +21,9 @@ use crate::universe::{
 
 const DISPATCH_LAYOUT: (usize, usize, usize) = (8, 8, 1);
 
-/// Static2DGrid
+/// StaticGrid2D
 
-pub struct Static2DGrid<C: AutomatonCell> {
+pub struct StaticGrid2D<C: AutomatonCell> {
     data: Vec<C>,
     size: Size2D,
     size_with_margin: Size2D,
@@ -31,14 +31,14 @@ pub struct Static2DGrid<C: AutomatonCell> {
     gpu: Option<GPUCompute<C>>,
 }
 
-impl<C: AutomatonCell<Neighbor = Neighbor2D>> Static2DGrid<C> {
+impl<C: AutomatonCell<Neighbor = Neighbor2D>> StaticGrid2D<C> {
     pub fn new(data: Vec<C>, size: Size2D) -> Self {
         if data.len() != size.total() {
             panic!(ERR_DIMENSIONS_SIZE)
         }
 
         // Determine the required margin around the actual data
-        let margin = Static2DGrid::<C>::compute_margin();
+        let margin = Self::compute_margin();
         let size_with_margin = Size2D(size.0 + (margin << 1), size.1 + (margin << 1));
 
         // Create grid with margin
@@ -81,7 +81,7 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> Static2DGrid<C> {
 
     pub fn new_empty(size: Size2D) -> Self {
         // Determine the required margin around the actual data
-        let margin = Static2DGrid::<C>::compute_margin();
+        let margin = Self::compute_margin();
         let size_with_margin = Size2D(size.0 + (margin << 1), size.1 + (margin << 1));
 
         Self {
@@ -102,7 +102,7 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> Static2DGrid<C> {
     }
 
     pub fn decode(encoded: Arc<CpuAccessibleBuffer<[C::Encoded]>>, size: Size2D) -> Self {
-        let margin = Static2DGrid::<C>::compute_margin();
+        let margin = Self::compute_margin();
         let size_with_margin = Size2D(size.0 + (margin << 1), size.1 + (margin << 1));
         let total_size = size_with_margin.total();
 
@@ -162,7 +162,7 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> Static2DGrid<C> {
     }
 }
 
-impl<C: AutomatonCell<Neighbor = Neighbor2D>> Universe for Static2DGrid<C> {
+impl<C: AutomatonCell<Neighbor = Neighbor2D>> Universe for StaticGrid2D<C> {
     type Cell = C;
     type Position = Position2D;
     type Neighbor = Neighbor2D;
@@ -207,7 +207,7 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> Universe for Static2DGrid<C> {
     }
 }
 
-impl<C: CPUCell<Neighbor = Neighbor2D>> CPUUniverse for Static2DGrid<C> {
+impl<C: CPUCell<Neighbor = Neighbor2D>> CPUUniverse for StaticGrid2D<C> {
     fn cpu_evolve_once(self) -> Self {
         // Compute new grid
         let mut new_data = vec![C::default(); self.size_with_margin.total()];
@@ -223,9 +223,9 @@ impl<C: CPUCell<Neighbor = Neighbor2D>> CPUUniverse for Static2DGrid<C> {
     }
 }
 
-impl<C: GPUCell<Neighbor = Neighbor2D>> Static2DGrid<C>
+impl<C: GPUCell<Neighbor = Neighbor2D>> StaticGrid2D<C>
 where
-    Static2DGrid<C>: UniverseAutomatonShader<C>,
+    StaticGrid2D<C>: UniverseAutomatonShader<C>,
 {
     fn get_gpu_handle(&mut self) -> &mut GPUCompute<C> {
         if let None = self.gpu {
@@ -235,9 +235,9 @@ where
     }
 }
 
-impl<C: GPUCell<Neighbor = Neighbor2D>> GPUUniverse for Static2DGrid<C>
+impl<C: GPUCell<Neighbor = Neighbor2D>> GPUUniverse for StaticGrid2D<C>
 where
-    Static2DGrid<C>: UniverseAutomatonShader<C>,
+    StaticGrid2D<C>: UniverseAutomatonShader<C>,
 {
     fn gpu_evolve(mut self, nb_gens: usize) -> Self {
         self.get_gpu_handle().run(nb_gens)
@@ -248,7 +248,7 @@ where
     }
 }
 
-impl<C: AutomatonCell> Clone for Static2DGrid<C> {
+impl<C: AutomatonCell> Clone for StaticGrid2D<C> {
     fn clone(&self) -> Self {
         Self {
             data: self.data.clone(),
@@ -263,12 +263,12 @@ impl<C: AutomatonCell> Clone for Static2DGrid<C> {
 /// LineIterator
 
 pub struct LineIterator<'a, C: AutomatonCell> {
-    grid: &'a Static2DGrid<C>,
+    grid: &'a StaticGrid2D<C>,
     line_idx: usize,
 }
 
 impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> LineIterator<'a, C> {
-    fn new(grid: &'a Static2DGrid<C>) -> Self {
+    fn new(grid: &'a StaticGrid2D<C>) -> Self {
         Self { grid, line_idx: 0 }
     }
 }
@@ -290,13 +290,13 @@ impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> Iterator for LineIterator<'a, 
 /// ColumnIterator
 
 pub struct ColumnIterator<'a, C: AutomatonCell> {
-    grid: &'a Static2DGrid<C>,
+    grid: &'a StaticGrid2D<C>,
     pos: Position2D,
     idx: usize,
 }
 
 impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> ColumnIterator<'a, C> {
-    pub fn new(grid: &'a Static2DGrid<C>, line_idx: usize) -> Self {
+    pub fn new(grid: &'a StaticGrid2D<C>, line_idx: usize) -> Self {
         Self {
             grid,
             pos: Position2D(0, line_idx),
@@ -329,7 +329,7 @@ pub struct GridDiff<C: AutomatonCell> {
 }
 
 impl<C: AutomatonCell<Neighbor = Neighbor2D>> GridDiff<C> {
-    pub fn new(prev_grid: &Static2DGrid<C>, next_grid: &Static2DGrid<C>) -> Self {
+    pub fn new(prev_grid: &StaticGrid2D<C>, next_grid: &StaticGrid2D<C>) -> Self {
         if prev_grid.size() != next_grid.size() {
             panic!(ERR_WRONG_DIMENSIONS)
         }
@@ -383,9 +383,9 @@ struct GPUCompute<C: AutomatonCell> {
 
 impl<C: GPUCell<Neighbor = Neighbor2D>> GPUCompute<C>
 where
-    Static2DGrid<C>: UniverseAutomatonShader<C>,
+    StaticGrid2D<C>: UniverseAutomatonShader<C>,
 {
-    fn new(grid: &Static2DGrid<C>, nb_nodes: usize) -> Self {
+    fn new(grid: &StaticGrid2D<C>, nb_nodes: usize) -> Self {
         // Create a logical device and compute queue
         let (device, queue) = {
             // Create a Vulkan instance and physical device
@@ -445,7 +445,7 @@ where
                     }
                 };
 
-                let shader = Static2DGrid::shader_info(&device);
+                let shader = StaticGrid2D::shader_info(&device);
                 nodes.push(ComputeNode::new(
                     grid,
                     &shader,
@@ -495,7 +495,7 @@ where
         }
     }
 
-    fn run(&mut self, nb_gens: usize) -> Static2DGrid<C> {
+    fn run(&mut self, nb_gens: usize) -> StaticGrid2D<C> {
         // Total number of compute nodes
         let nb_nodes = self.nodes.len();
 
@@ -512,17 +512,17 @@ where
             next_exe_node = self.wrap_ptr(next_exe_node)
         }
         future = Box::new(self.nodes[cpy_node].cpy_after(future));
-        GPUCompute::<C>::wait_for_future(future);
+        Self::wait_for_future(future);
 
         let encoded = Arc::clone(&self.nodes[cpy_node].cpu_out);
-        Static2DGrid::decode(encoded, self.size)
+        StaticGrid2D::decode(encoded, self.size)
     }
 
     fn run_mailbox(
         &mut self,
         nb_gens: usize,
-        callback: impl Fn(&Static2DGrid<C>) -> (),
-    ) -> Static2DGrid<C> {
+        callback: impl Fn(&StaticGrid2D<C>) -> (),
+    ) -> StaticGrid2D<C> {
         // Total number of compute nodes
         let nb_nodes = self.nodes.len();
 
@@ -560,7 +560,7 @@ where
 
         loop {
             // Wait for all nodes to finish execution
-            GPUCompute::<C>::wait_for_future(exe_future);
+            Self::wait_for_future(exe_future);
 
             // Tell all compute nodes to bring back data to CPU
             let mut next_cpy_node = start_node;
@@ -576,7 +576,7 @@ where
                 match cpy_futures.pop_front() {
                     Some((future, idx)) => {
                         // Wait for the copy operation to complete
-                        GPUCompute::<C>::wait_for_future(Box::new(future));
+                        Self::wait_for_future(Box::new(future));
 
                         // This node is available for compute again
                         if gens_to_compute > 0 {
@@ -586,7 +586,7 @@ where
 
                         // Transform raw data into Grid and send to mailbox
                         let encoded = Arc::clone(&self.nodes[idx].cpu_out);
-                        let new_grid = Static2DGrid::decode(encoded, self.size);
+                        let new_grid = StaticGrid2D::decode(encoded, self.size);
                         callback(&new_grid);
                         if launch_cnt == 0 && cpy_futures.len() == 0 {
                             return new_grid;
@@ -628,7 +628,7 @@ struct ComputeNode<C: AutomatonCell> {
 
 impl<C: AutomatonCell> ComputeNode<C> {
     fn new(
-        grid: &Static2DGrid<C>,
+        grid: &StaticGrid2D<C>,
         shader: &ShaderInfo,
         device: Arc<Device>,
         queue: Arc<Queue>,
