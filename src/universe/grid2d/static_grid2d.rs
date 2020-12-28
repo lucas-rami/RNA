@@ -3,20 +3,22 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
 // External library
-use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, DeviceLocalBuffer};
-use vulkano::command_buffer::{
-    AutoCommandBuffer, AutoCommandBufferBuilder, CommandBufferExecFuture,
+use vulkano::{
+    buffer::{BufferUsage, CpuAccessibleBuffer, DeviceLocalBuffer},
+    command_buffer::{AutoCommandBuffer, AutoCommandBufferBuilder, CommandBufferExecFuture},
+    descriptor::descriptor_set::PersistentDescriptorSet,
+    device::{Device, DeviceExtensions, Queue},
+    instance::{Instance, InstanceExtensions, PhysicalDevice},
+    sync::{self, GpuFuture, NowFuture},
 };
-use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
-use vulkano::device::{Device, DeviceExtensions, Queue};
-use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
-use vulkano::sync::{self, GpuFuture, NowFuture};
 
 // CELL
-use super::{Neighbor2D, Position2D, Size2D};
-use crate::automaton::{AutomatonCell, CPUCell, GPUCell};
-use crate::universe::{
-    CPUUniverse, GPUUniverse, ShaderInfo, Universe, UniverseAutomatonShader, UniverseDiff,
+use super::{Neighbor2D, Coordinates2D, Size2D};
+use crate::{
+    automaton::{AutomatonCell, CPUCell, GPUCell},
+    universe::{
+        CPUUniverse, GPUUniverse, ShaderInfo, Universe, UniverseAutomatonShader, UniverseDiff,
+    },
 };
 
 const DISPATCH_LAYOUT: (usize, usize, usize) = (8, 8, 1);
@@ -38,7 +40,7 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> StaticGrid2D<C> {
         }
 
         // Determine the required margin around the actual data
-        let margin = Self::compute_margin();
+        let margin = Neighbor2D::max_one_axis_manhattan_distance(C::neighborhood());
         let size_with_margin = Size2D(size.0 + (margin << 1), size.1 + (margin << 1));
 
         // Create grid with margin
@@ -81,7 +83,7 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> StaticGrid2D<C> {
 
     pub fn new_empty(size: Size2D) -> Self {
         // Determine the required margin around the actual data
-        let margin = Self::compute_margin();
+        let margin = Neighbor2D::max_one_axis_manhattan_distance(C::neighborhood());
         let size_with_margin = Size2D(size.0 + (margin << 1), size.1 + (margin << 1));
 
         Self {
@@ -102,7 +104,7 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> StaticGrid2D<C> {
     }
 
     pub fn decode(encoded: Arc<CpuAccessibleBuffer<[C::Encoded]>>, size: Size2D) -> Self {
-        let margin = Self::compute_margin();
+        let margin = Neighbor2D::max_one_axis_manhattan_distance(C::neighborhood());
         let size_with_margin = Size2D(size.0 + (margin << 1), size.1 + (margin << 1));
         let total_size = size_with_margin.total();
 
@@ -145,41 +147,26 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> StaticGrid2D<C> {
             gpu: self.gpu,
         }
     }
-
-    fn compute_margin() -> usize {
-        let mut max_manhattan_distance = 0;
-        let neighbors = C::neighborhood();
-        for n in neighbors {
-            let x = n.0.abs() as usize;
-            let y = n.1.abs() as usize;
-            if x < y && max_manhattan_distance < y {
-                max_manhattan_distance = y;
-            } else if max_manhattan_distance < x {
-                max_manhattan_distance = x;
-            }
-        }
-        max_manhattan_distance
-    }
 }
 
 impl<C: AutomatonCell<Neighbor = Neighbor2D>> Universe for StaticGrid2D<C> {
     type Cell = C;
-    type Position = Position2D;
+    type Position = Coordinates2D;
     type Neighbor = Neighbor2D;
     type Diff = GridDiff<C>;
 
     fn get(&self, pos: Self::Position) -> &Self::Cell {
-        let real_pos = Position2D(pos.0 + self.margin, pos.1 + self.margin);
+        let real_pos = Coordinates2D(pos.0 + self.margin, pos.1 + self.margin);
         &self.data[real_pos.idx(&self.size_with_margin)]
     }
 
     fn set(&mut self, pos: Self::Position, val: Self::Cell) {
-        let real_pos = Position2D(pos.0 + self.margin, pos.1 + self.margin);
+        let real_pos = Coordinates2D(pos.0 + self.margin, pos.1 + self.margin);
         self.data[real_pos.idx(&self.size_with_margin)] = val;
     }
 
     fn neighbor(&self, pos: &Self::Position, nbor: &Self::Neighbor) -> &Self::Cell {
-        let mut real_pos = Position2D(pos.0 + self.margin, pos.1 + self.margin);
+        let mut real_pos = Coordinates2D(pos.0 + self.margin, pos.1 + self.margin);
         if nbor.0 <= 0 {
             real_pos.0 -= nbor.0.abs() as usize;
         } else {
@@ -214,7 +201,7 @@ impl<C: CPUCell<Neighbor = Neighbor2D>> CPUUniverse for StaticGrid2D<C> {
         for col_iter in self.iter() {
             for (pos, cell) in col_iter {
                 let new_cell = cell.update(&self, &pos);
-                let real_pos = Position2D(pos.0 + self.margin, pos.1 + self.margin);
+                let real_pos = Coordinates2D(pos.0 + self.margin, pos.1 + self.margin);
                 new_data[real_pos.idx(&self.size_with_margin)] = new_cell;
             }
         }
@@ -291,7 +278,7 @@ impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> Iterator for LineIterator<'a, 
 
 pub struct ColumnIterator<'a, C: AutomatonCell> {
     grid: &'a StaticGrid2D<C>,
-    pos: Position2D,
+    pos: Coordinates2D,
     idx: usize,
 }
 
@@ -299,14 +286,14 @@ impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> ColumnIterator<'a, C> {
     pub fn new(grid: &'a StaticGrid2D<C>, line_idx: usize) -> Self {
         Self {
             grid,
-            pos: Position2D(0, line_idx),
+            pos: Coordinates2D(0, line_idx),
             idx: (line_idx + grid.margin) * grid.size_with_margin.0 + grid.margin,
         }
     }
 }
 
 impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> Iterator for ColumnIterator<'a, C> {
-    type Item = (Position2D, &'a C);
+    type Item = (Coordinates2D, &'a C);
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.pos.0 < self.grid.size.0 {

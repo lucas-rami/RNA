@@ -6,7 +6,7 @@ use crate::{
     automaton::{AutomatonCell, CPUCell, TermDrawableAutomaton},
     universe::{
         grid2d::{
-            {static_grid2d::StaticGrid2D, Position2D, Size2D},
+            {static_grid2d::StaticGrid2D, Coordinates2D, Size2D},
             {Neighbor2D, MOORE_NEIGHBORHOOD},
         },
         {CPUUniverse, Universe},
@@ -94,14 +94,14 @@ impl TermDrawableAutomaton for GameOfLife {
 
 pub fn blinker() -> StaticGrid2D<GameOfLife> {
     let mut blinker = StaticGrid2D::new_empty(Size2D(5, 5));
-    blinker.set(Position2D(1, 2), GameOfLife::Alive);
-    blinker.set(Position2D(2, 2), GameOfLife::Alive);
-    blinker.set(Position2D(3, 2), GameOfLife::Alive);
+    blinker.set(Coordinates2D(1, 2), GameOfLife::Alive);
+    blinker.set(Coordinates2D(2, 2), GameOfLife::Alive);
+    blinker.set(Coordinates2D(3, 2), GameOfLife::Alive);
     blinker
 }
 
 pub fn is_blinker(grid: &StaticGrid2D<GameOfLife>, flipped: bool) -> bool {
-    let cell_is_valid = |pos: Position2D, cell: &GameOfLife| {
+    let cell_is_valid = |pos: Coordinates2D, cell: &GameOfLife| {
         if flipped {
             if pos.1 >= 1 && pos.1 <= 3 && pos.0 == 2 {
                 return *cell == GameOfLife::Alive;
@@ -125,25 +125,25 @@ pub fn is_blinker(grid: &StaticGrid2D<GameOfLife>, flipped: bool) -> bool {
     true
 }
 
-const PENTA_DECATHLON_ALIVE_SET: [Position2D; 18] = [
-    Position2D(3, 6),
-    Position2D(3, 7),
-    Position2D(3, 8),
-    Position2D(3, 9),
-    Position2D(3, 10),
-    Position2D(3, 11),
-    Position2D(7, 6),
-    Position2D(7, 7),
-    Position2D(7, 8),
-    Position2D(7, 9),
-    Position2D(7, 10),
-    Position2D(7, 11),
-    Position2D(4, 5),
-    Position2D(5, 4),
-    Position2D(6, 5),
-    Position2D(4, 12),
-    Position2D(5, 13),
-    Position2D(6, 12),
+const PENTA_DECATHLON_ALIVE_SET: [Coordinates2D; 18] = [
+    Coordinates2D(3, 6),
+    Coordinates2D(3, 7),
+    Coordinates2D(3, 8),
+    Coordinates2D(3, 9),
+    Coordinates2D(3, 10),
+    Coordinates2D(3, 11),
+    Coordinates2D(7, 6),
+    Coordinates2D(7, 7),
+    Coordinates2D(7, 8),
+    Coordinates2D(7, 9),
+    Coordinates2D(7, 10),
+    Coordinates2D(7, 11),
+    Coordinates2D(4, 5),
+    Coordinates2D(5, 4),
+    Coordinates2D(6, 5),
+    Coordinates2D(4, 12),
+    Coordinates2D(5, 13),
+    Coordinates2D(6, 12),
 ];
 
 pub fn penta_decathlon() -> StaticGrid2D<GameOfLife> {
