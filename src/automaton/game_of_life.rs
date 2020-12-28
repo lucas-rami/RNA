@@ -50,7 +50,7 @@ impl AutomatonCell for GameOfLife {
 }
 
 impl CPUCell for GameOfLife {
-    fn update<U: CPUUniverse<Cell = Self>>(&self, universe: &U, pos: &U::Position) -> Self {
+    fn update<U: CPUUniverse<Cell = Self>>(&self, universe: &U, pos: &U::Coordinates) -> Self {
         // Count the number of alive cells around us
         let mut nb_alive_neighbors = 0 as u32;
         for nbor in Self::neighborhood() {

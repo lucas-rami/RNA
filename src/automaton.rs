@@ -19,7 +19,7 @@ pub trait AutomatonCell: Copy + Debug + Default + Eq + PartialEq + Send + Sync +
 }
 
 pub trait CPUCell: AutomatonCell {
-    fn update<U: CPUUniverse<Cell = Self>>(&self, universe: &U, pos: &U::Position) -> Self;
+    fn update<U: CPUUniverse<Cell = Self>>(&self, universe: &U, pos: &U::Coordinates) -> Self;
 }
 
 pub trait GPUCell: AutomatonCell {}

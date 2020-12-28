@@ -151,35 +151,35 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> StaticGrid2D<C> {
 
 impl<C: AutomatonCell<Neighbor = Neighbor2D>> Universe for StaticGrid2D<C> {
     type Cell = C;
-    type Position = Coordinates2D;
+    type Coordinates = Coordinates2D;
     type Diff = GridDiff<C>;
 
-    fn get(&self, pos: Self::Position) -> &Self::Cell {
-        let real_pos = Coordinates2D(pos.0 + self.margin, pos.1 + self.margin);
-        &self.data[real_pos.idx(&self.size_with_margin)]
+    fn get(&self, coords: Self::Coordinates) -> &Self::Cell {
+        let real_coords = Coordinates2D(coords.0 + self.margin, coords.1 + self.margin);
+        &self.data[real_coords.idx(&self.size_with_margin)]
     }
 
-    fn set(&mut self, pos: Self::Position, val: Self::Cell) {
-        let real_pos = Coordinates2D(pos.0 + self.margin, pos.1 + self.margin);
-        self.data[real_pos.idx(&self.size_with_margin)] = val;
+    fn set(&mut self, coords: Self::Coordinates, val: Self::Cell) {
+        let real_coords = Coordinates2D(coords.0 + self.margin, coords.1 + self.margin);
+        self.data[real_coords.idx(&self.size_with_margin)] = val;
     }
     fn neighbor(
         &self,
-        pos: &Self::Position,
+        coords: &Self::Coordinates,
         nbor: &<Self::Cell as AutomatonCell>::Neighbor,
     ) -> &Self::Cell {
-        let mut real_pos = Coordinates2D(pos.0 + self.margin, pos.1 + self.margin);
+        let mut real_coords = Coordinates2D(coords.0 + self.margin, coords.1 + self.margin);
         if nbor.0 <= 0 {
-            real_pos.0 -= nbor.0.abs() as usize;
+            real_coords.0 -= nbor.0.abs() as usize;
         } else {
-            real_pos.0 += nbor.0 as usize;
+            real_coords.0 += nbor.0 as usize;
         }
         if nbor.1 <= 0 {
-            real_pos.1 -= nbor.1.abs() as usize;
+            real_coords.1 -= nbor.1.abs() as usize;
         } else {
-            real_pos.1 += nbor.1 as usize;
+            real_coords.1 += nbor.1 as usize;
         }
-        &self.data[real_pos.idx(&self.size_with_margin)]
+        &self.data[real_coords.idx(&self.size_with_margin)]
     }
 
     fn diff(&self, other: &Self) -> Self::Diff {
@@ -201,10 +201,10 @@ impl<C: CPUCell<Neighbor = Neighbor2D>> CPUUniverse for StaticGrid2D<C> {
         // Compute new grid
         let mut new_data = vec![C::default(); self.size_with_margin.total()];
         for col_iter in self.iter() {
-            for (pos, cell) in col_iter {
-                let new_cell = cell.update(&self, &pos);
-                let real_pos = Coordinates2D(pos.0 + self.margin, pos.1 + self.margin);
-                new_data[real_pos.idx(&self.size_with_margin)] = new_cell;
+            for (coords, cell) in col_iter {
+                let new_cell = cell.update(&self, &coords);
+                let real_coords = Coordinates2D(coords.0 + self.margin, coords.1 + self.margin);
+                new_data[real_coords.idx(&self.size_with_margin)] = new_cell;
             }
         }
 
@@ -280,7 +280,7 @@ impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> Iterator for LineIterator<'a, 
 
 pub struct ColumnIterator<'a, C: AutomatonCell> {
     grid: &'a StaticGrid2D<C>,
-    pos: Coordinates2D,
+    coords: Coordinates2D,
     idx: usize,
 }
 
@@ -288,7 +288,7 @@ impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> ColumnIterator<'a, C> {
     pub fn new(grid: &'a StaticGrid2D<C>, line_idx: usize) -> Self {
         Self {
             grid,
-            pos: Coordinates2D(0, line_idx),
+            coords: Coordinates2D(0, line_idx),
             idx: (line_idx + grid.margin) * grid.size_with_margin.0 + grid.margin,
         }
     }
@@ -298,12 +298,12 @@ impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> Iterator for ColumnIterator<'a
     type Item = (Coordinates2D, &'a C);
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.pos.0 < self.grid.size.0 {
-            let ret_pos = self.pos;
+        if self.coords.0 < self.grid.size.0 {
+            let ret_coords = self.coords;
             let cell = &self.grid.data[self.idx];
-            self.pos.0 += 1;
+            self.coords.0 += 1;
             self.idx += 1;
-            Some((ret_pos, cell))
+            Some((ret_coords, cell))
         } else {
             None
         }
@@ -348,11 +348,11 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> UniverseDiff for GridDiff<C> {
     }
 
     fn stack(&mut self, other: &Self) {
-        for (pos, new_cell) in other.modifs.iter() {
-            match self.modifs.get_mut(pos) {
+        for (coords, new_cell) in other.modifs.iter() {
+            match self.modifs.get_mut(coords) {
                 Some(old_cell) => *old_cell = *new_cell,
                 None => {
-                    self.modifs.insert(*pos, *new_cell);
+                    self.modifs.insert(*coords, *new_cell);
                 }
             }
         }

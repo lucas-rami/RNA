@@ -6,6 +6,8 @@ use std::hash::Hash;
 // pub mod infinite_grid2d;
 pub mod static_grid2d;
 
+/// Size2D
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Size2D(pub usize, pub usize);
 
@@ -32,6 +34,8 @@ impl From<(usize, usize)> for Size2D {
         Size2D(tuple.0, tuple.1)
     }
 }
+
+/// Coordinates2D
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Coordinates2D(pub usize, pub usize);
@@ -63,6 +67,9 @@ impl From<(usize, usize)> for Coordinates2D {
         Coordinates2D(tuple.0, tuple.1)
     }
 }
+
+/// SCoordinates2D
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct SCoordinates2D(pub isize, pub isize);
 
@@ -89,7 +96,7 @@ impl SCoordinates2D {
     }
 }
 
-/// Neigbor2D
+/// Neighbor2D
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Neighbor2D(pub i32, pub i32);

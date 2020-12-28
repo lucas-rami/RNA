@@ -14,16 +14,16 @@ use crate::automaton::{AutomatonCell, CPUCell, GPUCell};
 
 pub trait Universe: Clone + Sized + Send + 'static {
     type Cell: AutomatonCell;
-    type Position;
+    type Coordinates;
     type Diff: UniverseDiff;
 
-    fn get(&self, pos: Self::Position) -> &Self::Cell;
+    fn get(&self, coords: Self::Coordinates) -> &Self::Cell;
 
-    fn set(&mut self, pos: Self::Position, val: Self::Cell);
+    fn set(&mut self, coords: Self::Coordinates, val: Self::Cell);
 
     fn neighbor(
         &self,
-        pos: &Self::Position,
+        coords: &Self::Coordinates,
         nbor: &<Self::Cell as AutomatonCell>::Neighbor,
     ) -> &Self::Cell;
 
