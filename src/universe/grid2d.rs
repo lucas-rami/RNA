@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use std::hash::Hash;
 
 // CELL
-// pub mod infinite_grid2d;
+pub mod infinite_grid2d;
 pub mod static_grid2d;
 
 /// Size2D

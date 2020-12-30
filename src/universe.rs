@@ -10,8 +10,6 @@ use vulkano::pipeline::ComputePipelineAbstract;
 pub mod grid2d;
 use crate::automaton::{AutomatonCell, CPUCell, GPUCell};
 
-/// Universe
-
 pub trait Universe: Clone + Sized + Send + 'static {
     type Cell: AutomatonCell;
     type Coordinates;
@@ -89,7 +87,6 @@ pub struct ShaderInfo {
     pub layout: Arc<UnsafeDescriptorSetLayout>,
     pub pipeline: Arc<Box<dyn ComputePipelineAbstract + Send + Sync + 'static>>,
 }
-
 pub trait UniverseAutomatonShader<C: AutomatonCell>: Universe<Cell = C> {
     fn shader_info(device: &Arc<Device>) -> ShaderInfo;
 }
