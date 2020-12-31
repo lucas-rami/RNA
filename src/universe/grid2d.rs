@@ -111,7 +111,7 @@ impl Iterator for LineIterator {
 
 /// SCoordinates2D
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]  
 pub struct SCoordinates2D(pub isize, pub isize);
 
 impl SCoordinates2D {

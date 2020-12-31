@@ -137,16 +137,6 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> StaticGrid2D<C> {
     pub fn iter(&self) -> StaticGrid2DIterator<C> {
         StaticGrid2DIterator::new(self)
     }
-
-    fn move_grid_info(self, new_data: Vec<C>) -> Self {
-        Self {
-            data: new_data,
-            size: self.size,
-            size_with_margin: self.size_with_margin,
-            margin: self.margin,
-            gpu: self.gpu,
-        }
-    }
 }
 
 impl<C: AutomatonCell<Neighbor = Neighbor2D>> Universe for StaticGrid2D<C> {
@@ -187,18 +177,19 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> Universe for StaticGrid2D<C> {
         GridDiff::new(self, other)
     }
 
-    fn apply_diff(self, diff: &Self::Diff) -> Self {
+    fn apply_diff(mut self, diff: &Self::Diff) -> Self {
         let mut new_data = self.data.clone();
         for (idx, new_cell) in diff.iter() {
             new_data[*idx] = *new_cell
         }
 
-        self.move_grid_info(new_data)
+        self.data = new_data;
+        self
     }
 }
 
 impl<C: CPUCell<Neighbor = Neighbor2D>> CPUUniverse for StaticGrid2D<C> {
-    fn cpu_evolve_once(self) -> Self {
+    fn cpu_evolve_once(mut self) -> Self {
         // Compute new grid
         let mut new_data = vec![C::default(); self.size_with_margin.total()];
         for col_iter in self.iter() {
@@ -209,7 +200,8 @@ impl<C: CPUCell<Neighbor = Neighbor2D>> CPUUniverse for StaticGrid2D<C> {
             }
         }
 
-        self.move_grid_info(new_data)
+        self.data = new_data;
+        self
     }
 }
 

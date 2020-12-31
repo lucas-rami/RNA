@@ -14,10 +14,7 @@ use crate::{
 use super::{Coordinates2D, Neighbor2D, SCoordinates2D};
 
 // ! Assumption : a cell in the default state whose neighborhood only consists of cells in the
-// ! default state will remain in the deault state in the next generation
-
-// ! Assumption: the chunk size is larger than the maximum one-axis manhattan distance of the
-// ! automaton's neighborhood
+// ! default state will remain in the default state in the next generation
 
 /// InfiniteGrid2D
 
@@ -26,15 +23,42 @@ pub struct InfiniteGrid2D<C: AutomatonCell> {
     chunks: HashMap<SCoordinates2D, Chunk<C>>,
     chunk_size_pow2: usize,
     boundary_size: usize,
+    gc_countdown: usize,
 }
 
 impl<C: AutomatonCell<Neighbor = Neighbor2D>> InfiniteGrid2D<C> {
     pub fn new(chunk_size_pow2: usize) -> Self {
+        let boundary_size = Neighbor2D::max_one_axis_manhattan_distance(C::neighborhood());
+
+        // Equivalent to (2 * boundary) > 2^chunk_size_pow2
+        if (boundary_size << 1) > (1 << chunk_size_pow2) {
+            panic!(ERR_CHUNK_TOO_SMALL);
+        }
+
         Self {
             chunks: HashMap::new(),
             chunk_size_pow2,
-            boundary_size: Neighbor2D::max_one_axis_manhattan_distance(C::neighborhood()),
+            boundary_size,
+            gc_countdown: GC_RATE,
         }
+    }
+
+    pub fn free_unused_chunks(&mut self) {
+        // Look for chunks that can be freed
+        let mut to_free = Vec::new();
+        for (coords, chunk) in self.chunks.iter() {
+            if chunk.is_safe_for_deletion(&self.chunks) {
+                to_free.push(*coords);
+            }
+        }
+
+        // Free all chunks that can be freed 
+        for coords in to_free {
+            self.chunks.remove(&coords);
+        }
+
+        // Reset the garbage collection countdown timer
+        self.gc_countdown = GC_RATE;
     }
 
     #[inline]
@@ -125,6 +149,12 @@ impl<C: CPUCell<Neighbor = Neighbor2D>> CPUUniverse for InfiniteGrid2D<C> {
             }
         }
 
+        // Trigger garbage collection procedure at a fixed rate
+        self.gc_countdown -= 1;
+        if self.gc_countdown == 0 {
+            self.free_unused_chunks();
+        }
+
         // Return the updated universe
         self
     }
@@ -166,6 +196,29 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> Chunk<C> {
         inner.data[local_coords.x() + self.size * local_coords.y()] = val;
         if val != C::default() {
             inner.is_empty = false;
+        }
+    }
+
+    fn is_safe_for_deletion(&self, chunks: &HashMap<SCoordinates2D, Chunk<C>>) -> bool {
+        let inner = self.inner.borrow();
+
+        // A chunk is safe for deletion if it's empty and all surrounding chunks are also empty
+        if inner.is_empty {
+            let x = self.coordinates.x();
+            let y = self.coordinates.y();
+
+            // Check that all surrounding chunks are empty
+            for rel_coords in &NEIGHBORS {
+                let nbor_coords = SCoordinates2D(x + rel_coords.x(), y + rel_coords.y());
+                if let Some(nbor_chunk) = chunks.get(&nbor_coords) {
+                    if !nbor_chunk.inner.borrow().is_empty {
+                        return false;
+                    }
+                }
+            }
+            true
+        } else {
+            false
         }
     }
 
@@ -360,3 +413,18 @@ impl<C: AutomatonCell> UniverseDiff for InfiniteGridDiff<C> {
         todo!()
     }
 }
+
+const GC_RATE: usize = 100;
+const NEIGHBORS: [SCoordinates2D; 8] = [
+    SCoordinates2D(0, -1),
+    SCoordinates2D(1, -1),
+    SCoordinates2D(1, 0),
+    SCoordinates2D(1, 1),
+    SCoordinates2D(0, 1),
+    SCoordinates2D(-1, 1),
+    SCoordinates2D(-1, 0),
+    SCoordinates2D(-1, -1),
+];
+
+const ERR_CHUNK_TOO_SMALL: &str =
+    "The boundary size must be at least twice as big as the chunk size.";
