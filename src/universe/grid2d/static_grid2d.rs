@@ -134,8 +134,8 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> StaticGrid2D<C> {
     }
 
     #[inline]
-    pub fn iter(&self) -> LineIterator<C> {
-        LineIterator::new(self)
+    pub fn iter(&self) -> StaticGrid2DIterator<C> {
+        StaticGrid2DIterator::new(self)
     }
 
     fn move_grid_info(self, new_data: Vec<C>) -> Self {
@@ -154,9 +154,9 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> Universe for StaticGrid2D<C> {
     type Coordinates = Coordinates2D;
     type Diff = GridDiff<C>;
 
-    fn get(&self, coords: Self::Coordinates) -> &Self::Cell {
+    fn get(&self, coords: Self::Coordinates) -> Self::Cell {
         let real_coords = Coordinates2D(coords.x() + self.margin, coords.y() + self.margin);
-        &self.data[real_coords.to_idx(&self.size_with_margin)]
+        self.data[real_coords.to_idx(&self.size_with_margin)]
     }
 
     fn set(&mut self, coords: Self::Coordinates, val: Self::Cell) {
@@ -165,9 +165,9 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> Universe for StaticGrid2D<C> {
     }
     fn neighbor(
         &self,
-        coords: &Self::Coordinates,
-        nbor: &<Self::Cell as AutomatonCell>::Neighbor,
-    ) -> &Self::Cell {
+        coords: Self::Coordinates,
+        nbor: <Self::Cell as AutomatonCell>::Neighbor,
+    ) -> Self::Cell {
         let real_coords = Coordinates2D(coords.x() + self.margin, coords.y() + self.margin);
         let mut idx = real_coords.to_idx(&self.size_with_margin);
         if nbor.x() < 0 {
@@ -180,7 +180,7 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> Universe for StaticGrid2D<C> {
         } else {
             idx += nbor.y() as usize * self.size_with_margin.columns()
         }
-        &self.data[idx]
+        self.data[idx]
     }
 
     fn diff(&self, other: &Self) -> Self::Diff {
@@ -203,7 +203,7 @@ impl<C: CPUCell<Neighbor = Neighbor2D>> CPUUniverse for StaticGrid2D<C> {
         let mut new_data = vec![C::default(); self.size_with_margin.total()];
         for col_iter in self.iter() {
             for (coords, cell) in col_iter {
-                let new_cell = cell.update(&self, &coords);
+                let new_cell = cell.update(&self, coords);
                 let real_coords = Coordinates2D(coords.x() + self.margin, coords.y() + self.margin);
                 new_data[real_coords.to_idx(&self.size_with_margin)] = new_cell;
             }
@@ -250,25 +250,25 @@ impl<C: AutomatonCell> Clone for StaticGrid2D<C> {
     }
 }
 
-/// LineIterator
+/// StaticGrid2DIterator
 
-pub struct LineIterator<'a, C: AutomatonCell> {
+pub struct StaticGrid2DIterator<'a, C: AutomatonCell> {
     grid: &'a StaticGrid2D<C>,
     line_idx: usize,
 }
 
-impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> LineIterator<'a, C> {
+impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> StaticGrid2DIterator<'a, C> {
     fn new(grid: &'a StaticGrid2D<C>) -> Self {
         Self { grid, line_idx: 0 }
     }
 }
 
-impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> Iterator for LineIterator<'a, C> {
-    type Item = ColumnIterator<'a, C>;
+impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> Iterator for StaticGrid2DIterator<'a, C> {
+    type Item = StaticGrid2DLineIterator<'a, C>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.line_idx < self.grid.size.lines() {
-            let col_iterator = ColumnIterator::new(self.grid, self.line_idx);
+            let col_iterator = StaticGrid2DLineIterator::new(self.grid, self.line_idx);
             self.line_idx += 1;
             Some(col_iterator)
         } else {
@@ -277,15 +277,15 @@ impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> Iterator for LineIterator<'a, 
     }
 }
 
-/// ColumnIterator
+/// StaticGrid2DLineIterator
 
-pub struct ColumnIterator<'a, C: AutomatonCell> {
+pub struct StaticGrid2DLineIterator<'a, C: AutomatonCell> {
     grid: &'a StaticGrid2D<C>,
     coords: Coordinates2D,
     idx: usize,
 }
 
-impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> ColumnIterator<'a, C> {
+impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> StaticGrid2DLineIterator<'a, C> {
     pub fn new(grid: &'a StaticGrid2D<C>, line_idx: usize) -> Self {
         Self {
             grid,
@@ -295,13 +295,13 @@ impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> ColumnIterator<'a, C> {
     }
 }
 
-impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> Iterator for ColumnIterator<'a, C> {
-    type Item = (Coordinates2D, &'a C);
+impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> Iterator for StaticGrid2DLineIterator<'a, C> {
+    type Item = (Coordinates2D, C);
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.coords.x() < self.grid.size.columns() {
             let ret_coords = self.coords;
-            let cell = &self.grid.data[self.idx];
+            let cell = self.grid.data[self.idx];
             self.coords.0 += 1;
             self.idx += 1;
             Some((ret_coords, cell))

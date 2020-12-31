@@ -50,11 +50,11 @@ impl AutomatonCell for GameOfLife {
 }
 
 impl CPUCell for GameOfLife {
-    fn update<U: CPUUniverse<Cell = Self>>(&self, universe: &U, pos: &U::Coordinates) -> Self {
+    fn update<U: CPUUniverse<Cell = Self>>(&self, universe: &U, coords: U::Coordinates) -> Self {
         // Count the number of alive cells around us
         let mut nb_alive_neighbors = 0 as u32;
         for nbor in Self::neighborhood() {
-            if let GameOfLife::Alive = universe.neighbor(pos, nbor) {
+            if let GameOfLife::Alive = universe.neighbor(coords.clone(), *nbor) {
                 nb_alive_neighbors += 1;
             }
         }
@@ -97,17 +97,17 @@ pub fn blinker() -> StaticGrid2D<GameOfLife> {
 }
 
 pub fn is_blinker(grid: &StaticGrid2D<GameOfLife>, flipped: bool) -> bool {
-    let cell_is_valid = |pos: Coordinates2D, cell: &GameOfLife| {
+    let cell_is_valid = |pos: Coordinates2D, cell: GameOfLife| {
         if flipped {
             if pos.1 >= 1 && pos.1 <= 3 && pos.0 == 2 {
-                return *cell == GameOfLife::Alive;
+                return cell == GameOfLife::Alive;
             }
         } else {
             if pos.0 >= 1 && pos.0 <= 3 && pos.1 == 2 {
-                return *cell == GameOfLife::Alive;
+                return cell == GameOfLife::Alive;
             }
         }
-        *cell == GameOfLife::Dead
+        cell == GameOfLife::Dead
     };
 
     // Check that every cell is valid
@@ -154,7 +154,7 @@ pub fn is_penta_decathlon(grid: &StaticGrid2D<GameOfLife>) -> bool {
     let mut nb_alives = PENTA_DECATHLON_ALIVE_SET.len();
     for col_iter in grid.iter() {
         for (pos, cell) in col_iter {
-            if *cell == GameOfLife::Alive {
+            if cell == GameOfLife::Alive {
                 if PENTA_DECATHLON_ALIVE_SET.contains(&pos) && nb_alives != 0 {
                     nb_alives -= 1;
                 } else {

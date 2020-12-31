@@ -12,18 +12,18 @@ use crate::automaton::{AutomatonCell, CPUCell, GPUCell};
 
 pub trait Universe: Clone + Sized + Send + 'static {
     type Cell: AutomatonCell;
-    type Coordinates;
+    type Coordinates: Clone;
     type Diff: UniverseDiff;
 
-    fn get(&self, coords: Self::Coordinates) -> &Self::Cell;
+    fn get(&self, coords: Self::Coordinates) -> Self::Cell;
 
     fn set(&mut self, coords: Self::Coordinates, val: Self::Cell);
 
     fn neighbor(
         &self,
-        coords: &Self::Coordinates,
-        nbor: &<Self::Cell as AutomatonCell>::Neighbor,
-    ) -> &Self::Cell;
+        coords: Self::Coordinates,
+        nbor: <Self::Cell as AutomatonCell>::Neighbor,
+    ) -> Self::Cell;
 
     fn diff(&self, other: &Self) -> Self::Diff;
 

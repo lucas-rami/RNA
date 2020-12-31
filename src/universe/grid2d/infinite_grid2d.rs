@@ -1,5 +1,6 @@
 // Standard library
 use std::{
+    cell::{Ref, RefCell},
     collections::{HashMap, HashSet},
     marker::PhantomData,
 };
@@ -25,7 +26,6 @@ pub struct InfiniteGrid2D<C: AutomatonCell> {
     chunks: HashMap<SCoordinates2D, Chunk<C>>,
     chunk_size_pow2: usize,
     boundary_size: usize,
-    default_cell: C,
 }
 
 impl<C: AutomatonCell<Neighbor = Neighbor2D>> InfiniteGrid2D<C> {
@@ -34,13 +34,12 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> InfiniteGrid2D<C> {
             chunks: HashMap::new(),
             chunk_size_pow2,
             boundary_size: Neighbor2D::max_one_axis_manhattan_distance(C::neighborhood()),
-            default_cell: C::default(),
         }
     }
 
     #[inline]
     fn create_chunk(&self, coords: SCoordinates2D) -> Chunk<C> {
-        // * TODO We should never create a chunk near the isize underflow/overflow boundary
+        // TODO We should never create a chunk near the isize underflow/overflow boundary
         Chunk::new(coords, 1 << self.chunk_size_pow2, self.boundary_size)
     }
 }
@@ -50,11 +49,11 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> Universe for InfiniteGrid2D<C> {
     type Coordinates = SCoordinates2D;
     type Diff = InfiniteGridDiff<C>;
 
-    fn get(&self, coords: Self::Coordinates) -> &Self::Cell {
+    fn get(&self, coords: Self::Coordinates) -> Self::Cell {
         let chunk_coords = coords.to_chunk_coordinates(self.chunk_size_pow2);
         match self.chunks.get(&chunk_coords) {
             Some(chunk) => chunk.get(coords.to_coordinates_in_chunk(self.chunk_size_pow2)),
-            None => &self.default_cell,
+            None => C::default(),
         }
     }
 
@@ -78,7 +77,7 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> Universe for InfiniteGrid2D<C> {
         let chunk = self.chunks.get_mut(&chunk_coords).unwrap();
         if val != C::default() {
             let mut adjacent_chunks = HashSet::new();
-            chunk.get_boundary_chunks(coords_in_chunk, &mut adjacent_chunks);
+            chunk.get_adjacent_chunks(coords_in_chunk, &mut adjacent_chunks);
             for adj_chunk_coords in adjacent_chunks {
                 if !self.chunks.contains_key(&adj_chunk_coords) {
                     let new_chunk = self.create_chunk(adj_chunk_coords);
@@ -90,71 +89,87 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> Universe for InfiniteGrid2D<C> {
 
     fn neighbor(
         &self,
-        coords: &Self::Coordinates,
-        nbor: &<Self::Cell as AutomatonCell>::Neighbor,
-    ) -> &Self::Cell {
+        coords: Self::Coordinates,
+        nbor: <Self::Cell as AutomatonCell>::Neighbor,
+    ) -> Self::Cell {
         self.get(SCoordinates2D(
             coords.0 + nbor.0 as isize,
             coords.1 + nbor.1 as isize,
         ))
     }
 
-    fn diff(&self, other: &Self) -> Self::Diff {
+    fn diff(&self, _other: &Self) -> Self::Diff {
         todo!()
     }
 
-    fn apply_diff(self, diff: &Self::Diff) -> Self {
+    fn apply_diff(self, _diff: &Self::Diff) -> Self {
         todo!()
     }
 }
 
 impl<C: CPUCell<Neighbor = Neighbor2D>> CPUUniverse for InfiniteGrid2D<C> {
-    fn cpu_evolve_once(self) -> Self {
-        todo!()
+    fn cpu_evolve_once(mut self) -> Self {
+        let mut all_chunks = HashSet::new();
+        for (_coords, chunk) in self.chunks.iter() {
+            // Update the chunk and collect set of adjacent chunks that need to be added to the universe
+            for adjacent_chunk_coords in chunk.evolve(&self) {
+                all_chunks.insert(adjacent_chunk_coords);
+            }
+        }
+
+        // Add all collected adjacent chunks to the universe
+        for chunk_coords in all_chunks {
+            if !self.chunks.contains_key(&chunk_coords) {
+                let new_chunk = self.create_chunk(chunk_coords);
+                self.chunks.insert(chunk_coords, new_chunk);
+            }
+        }
+
+        // Return the updated universe
+        self
     }
 }
+
 impl<C: GPUCell<Neighbor = Neighbor2D>> GPUUniverse for InfiniteGrid2D<C> {}
 
 /// Chunk
 
 #[derive(Clone)]
 pub struct Chunk<C: AutomatonCell> {
-    data: Vec<C>,
+    inner: RefCell<ChunkInner<C>>,
     coordinates: SCoordinates2D,
     size: usize,
     boundary_size: usize,
-    is_empty: bool,
 }
 
 impl<C: AutomatonCell<Neighbor = Neighbor2D>> Chunk<C> {
-    pub fn get(&self, coord: Coordinates2D) -> &C {
-        &self.data[coord.0 + self.size * coord.1]
+    pub fn get(&self, coord: Coordinates2D) -> C {
+        self.inner.borrow().data[coord.0 + self.size * coord.1]
+    }
+
+    #[inline]
+    pub fn iter(&self) -> ChunkIterator<C> {
+        ChunkIterator::new(self)
     }
 
     fn new(coordinates: SCoordinates2D, size: usize, boundary_size: usize) -> Self {
         Self {
-            data: vec![C::default(); size],
+            inner: RefCell::new(ChunkInner::new(size)),
             coordinates,
             size,
             boundary_size,
-            is_empty: true,
         }
     }
 
     fn set(&mut self, local_coords: Coordinates2D, val: C) {
-        self.data[local_coords.x() + self.size * local_coords.y()] = val;
+        let mut inner = self.inner.borrow_mut();
+        inner.data[local_coords.x() + self.size * local_coords.y()] = val;
         if val != C::default() {
-            self.is_empty = false;
+            inner.is_empty = false;
         }
     }
 
-    fn evolve(&mut self) -> HashSet<SCoordinates2D> {
-        let mut new_data = vec![C::default(); self.size];
-        self.data = new_data;
-        todo!()
-    }
-
-    fn get_boundary_chunks(
+    fn get_adjacent_chunks(
         &self,
         local_coords: Coordinates2D,
         chunk_coordinates: &mut HashSet<SCoordinates2D>,
@@ -193,6 +208,142 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> Chunk<C> {
     }
 }
 
+impl<C: CPUCell<Neighbor = Neighbor2D>> Chunk<C> {
+    fn evolve(&self, grid: &InfiniteGrid2D<C>) -> HashSet<SCoordinates2D> {
+        let world_coords = self.coordinates.to_universe_coordinates(self.size);
+        let default_cell = C::default();
+
+        let mut new_data = Vec::with_capacity(self.size * self.size);
+        let (mut min_x, mut max_x, mut min_y, mut max_y) = (0usize, usize::MAX, 0usize, usize::MAX);
+        let mut is_empty = true;
+
+        // Update each cell in the chunk
+        for line in self.iter() {
+            for (coords, cell) in line {
+                // Compute cell's world coordinates and update it
+                let x = coords.x();
+                let y = coords.y();
+                let cell_world_coords =
+                    SCoordinates2D(world_coords.x() + x as isize, world_coords.y() + y as isize);
+                let new_cell = cell.update(grid, cell_world_coords);
+
+                if new_cell != default_cell {
+                    // Update min/max coordinates of updated cells
+                    if x < min_x {
+                        min_x = x;
+                    } else if x > max_x {
+                        max_x = x;
+                    }
+                    if y < min_y {
+                        min_y = y;
+                    } else if y > max_y {
+                        max_y = y;
+                    }
+
+                    // Mark the chunk non-empty
+                    is_empty = false;
+                }
+
+                // Append cell to new data vector
+                new_data.push(new_cell);
+            }
+        }
+
+        // Compute the set of adjacent chunks that the universe might need to create
+        let mut adjacent_chunks = HashSet::new();
+        if !is_empty {
+            self.get_adjacent_chunks(Coordinates2D(min_x, min_y), &mut adjacent_chunks);
+            self.get_adjacent_chunks(Coordinates2D(max_x, max_y), &mut adjacent_chunks);
+        }
+
+        // * Modify interior cell and return
+        let mut inner = self.inner.borrow_mut();
+        inner.data = new_data;
+        inner.is_empty = is_empty;
+        adjacent_chunks
+    }
+}
+
+/// ChunkInner
+
+#[derive(Clone)]
+struct ChunkInner<C: AutomatonCell> {
+    data: Vec<C>,
+    is_empty: bool,
+}
+
+impl<C: AutomatonCell> ChunkInner<C> {
+    fn new(size: usize) -> Self {
+        Self {
+            data: vec![C::default(); size * size],
+            is_empty: true,
+        }
+    }
+}
+
+/// ChunkIterator
+
+pub struct ChunkIterator<'a, C: AutomatonCell> {
+    chunk: &'a Chunk<C>,
+    line_idx: usize,
+}
+
+impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> ChunkIterator<'a, C> {
+    fn new(chunk: &'a Chunk<C>) -> Self {
+        Self { chunk, line_idx: 0 }
+    }
+}
+
+impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> Iterator for ChunkIterator<'a, C> {
+    type Item = ChunkLineIterator<'a, C>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.line_idx < self.chunk.size {
+            let col_iterator = ChunkLineIterator::new(self.chunk, self.line_idx);
+            self.line_idx += 1;
+            Some(col_iterator)
+        } else {
+            None
+        }
+    }
+}
+
+/// ChunkLineIterator
+
+pub struct ChunkLineIterator<'a, C: AutomatonCell> {
+    chunk: Ref<'a, ChunkInner<C>>,
+    size: usize,
+    coords: Coordinates2D,
+    idx: usize,
+}
+
+impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> ChunkLineIterator<'a, C> {
+    fn new(chunk: &'a Chunk<C>, line_idx: usize) -> Self {
+        Self {
+            chunk: chunk.inner.borrow(),
+            size: chunk.size,
+            coords: Coordinates2D(0, line_idx),
+            idx: line_idx * chunk.size,
+        }
+    }
+}
+
+impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> Iterator for ChunkLineIterator<'a, C> {
+    type Item = (Coordinates2D, C);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.coords.x() < self.size {
+            let ret_coords = self.coords;
+            let cell = self.chunk.data[self.idx];
+            self.coords.0 += 1;
+            self.idx += 1;
+            Some((ret_coords, cell))
+        } else {
+            None
+        }
+    }
+}
+
 /// InfiniteGridDiff
 
 #[derive(Clone)]
@@ -205,7 +356,7 @@ impl<C: AutomatonCell> UniverseDiff for InfiniteGridDiff<C> {
         todo!()
     }
 
-    fn stack(&mut self, other: &Self) {
+    fn stack(&mut self, _other: &Self) {
         todo!()
     }
 }

@@ -77,6 +77,11 @@ impl SCoordinates2D {
     }
 
     #[inline]
+    pub fn to_universe_coordinates(&self, chunk_size_pow2: usize) -> Self {
+        Self(self.0 << chunk_size_pow2, self.1 << chunk_size_pow2)
+    }
+
+    #[inline]
     pub fn to_coordinates_in_chunk(&self, chunk_size_pow2: usize) -> Coordinates2D {
         let mask = (1 << chunk_size_pow2) - 1 as isize;
         Coordinates2D((self.0 & mask) as usize, (self.1 & mask) as usize)
