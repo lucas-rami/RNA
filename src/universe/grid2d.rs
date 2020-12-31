@@ -55,6 +55,60 @@ impl Coordinates2D {
     }
 }
 
+/// RectangleIterator
+
+pub struct RectangleIterator {
+    size: Size2D,
+    line_idx: usize,
+}
+
+impl RectangleIterator {
+    pub fn new(size: Size2D) -> Self {
+        Self { size, line_idx: 0 }
+    }
+}
+
+impl Iterator for RectangleIterator {
+    type Item = LineIterator;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.line_idx < self.size.lines() {
+            let ret = LineIterator::new(Coordinates2D(0, self.line_idx), self.size.columns());
+            self.line_idx += 1;
+            Some(ret)
+        } else {
+            None
+        }
+    }
+}
+
+/// LineIterator
+
+pub struct LineIterator {
+    coords: Coordinates2D,
+    countdown: usize,
+}
+
+impl LineIterator {
+    pub fn new(coords: Coordinates2D, countdown: usize) -> Self {
+        Self { coords, countdown }
+    }
+}
+
+impl Iterator for LineIterator {
+    type Item = Coordinates2D;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.countdown > 0 {
+            self.coords.0 += 1;
+            self.countdown -= 1;
+            Some(self.coords)
+        } else {
+            None
+        }
+    }
+}
+
 /// SCoordinates2D
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
