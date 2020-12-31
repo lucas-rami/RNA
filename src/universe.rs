@@ -13,7 +13,6 @@ use crate::automaton::{AutomatonCell, CPUCell, GPUCell};
 pub trait Universe: Clone + Sized + Send + 'static {
     type Cell: AutomatonCell;
     type Coordinates: Clone;
-    type Diff: UniverseDiff;
 
     fn get(&self, coords: Self::Coordinates) -> Self::Cell;
 
@@ -24,10 +23,6 @@ pub trait Universe: Clone + Sized + Send + 'static {
         coords: Self::Coordinates,
         nbor: <Self::Cell as AutomatonCell>::Neighbor,
     ) -> Self::Cell;
-
-    fn diff(&self, other: &Self) -> Self::Diff;
-
-    fn apply_diff(self, diff: &Self::Diff) -> Self;
 }
 
 pub trait CPUUniverse: Universe
@@ -91,16 +86,20 @@ pub trait UniverseAutomatonShader<C: AutomatonCell>: Universe<Cell = C> {
     fn shader_info(device: &Arc<Device>) -> ShaderInfo;
 }
 
-/// UniverseDiff
+pub trait GenerationDifference: Clone + Send + 'static {
+    type Universe: Universe;
 
-pub trait UniverseDiff: Clone + Send {
-    fn no_diff() -> Self;
+    fn empty_diff() -> Self;
+
+    fn get_diff(base: &Self::Universe, target: &Self::Universe) -> Self;
+
+    fn apply_to(&self, base: Self::Universe) -> Self::Universe;
 
     fn stack(&mut self, other: &Self);
 
     fn stack_mul(diffs: &[Self]) -> Self {
         if diffs.len() == 0 {
-            Self::no_diff()
+            Self::empty_diff()
         } else {
             let mut acc_diff = diffs[0].clone();
             for next_diff in &diffs[1..] {

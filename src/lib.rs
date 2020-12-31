@@ -82,9 +82,12 @@ compile_automaton_shaders! {
 #[cfg(test)]
 mod tests {
 
+    use game_of_life::GameOfLife;
+
     use crate::{
         automaton::game_of_life,
         simulator::{AsyncSimulator, Simulator, SyncSimulator},
+        universe::grid2d::static_grid2d::{GridDiff, StaticGrid2D},
     };
 
     #[test]
@@ -93,7 +96,8 @@ mod tests {
         let blinker = game_of_life::blinker();
 
         // Run automaton for 2 generation (the blinker's period)
-        let mut simulator = SyncSimulator::cpu_backend(blinker, 10);
+        let mut simulator: SyncSimulator<StaticGrid2D<GameOfLife>, GridDiff<GameOfLife>> =
+            SyncSimulator::cpu_backend(blinker, 10);
         simulator.run(2);
 
         // Check that the blinker flipped correctly
@@ -111,7 +115,8 @@ mod tests {
         let blinker = game_of_life::blinker();
 
         // Run automaton for 2 generation (the blinker's period)
-        let mut simulator = AsyncSimulator::cpu_backend(blinker, 10);
+        let mut simulator: AsyncSimulator<StaticGrid2D<GameOfLife>, GridDiff<GameOfLife>> =
+            AsyncSimulator::cpu_backend(blinker, 10);
         simulator.run(2);
 
         // Check that the blinker flipped correctly
@@ -128,7 +133,8 @@ mod tests {
         let penta_decathlon = game_of_life::penta_decathlon();
 
         // Run automaton for 14x15=210 generation (14 times the penta-decathlon's period)
-        let mut simulator = AsyncSimulator::cpu_backend(penta_decathlon, 10);
+        let mut simulator: SyncSimulator<StaticGrid2D<GameOfLife>, GridDiff<GameOfLife>> =
+            SyncSimulator::cpu_backend(penta_decathlon, 10);
         simulator.run(210);
 
         // Check that the penta-decathlon was updated correctly: each intermediate generation between new periods should be
@@ -146,7 +152,8 @@ mod tests {
         let penta_decathlon = game_of_life::penta_decathlon();
 
         // Run automaton for 14x15=210 generation (14 times the penta-decathlon's period)
-        let mut simulator = AsyncSimulator::cpu_backend(penta_decathlon, 10);
+        let mut simulator: AsyncSimulator<StaticGrid2D<GameOfLife>, GridDiff<GameOfLife>> =
+            AsyncSimulator::cpu_backend(penta_decathlon, 10);
         simulator.run(210);
 
         // Check that the penta-decathlon was updated correctly: each intermediate generation between new periods should be

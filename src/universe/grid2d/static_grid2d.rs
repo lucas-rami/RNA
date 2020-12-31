@@ -17,7 +17,8 @@ use super::{Coordinates2D, Neighbor2D, Size2D};
 use crate::{
     automaton::{AutomatonCell, CPUCell, GPUCell},
     universe::{
-        CPUUniverse, GPUUniverse, ShaderInfo, Universe, UniverseAutomatonShader, UniverseDiff,
+        CPUUniverse, GPUUniverse, GenerationDifference, ShaderInfo, Universe,
+        UniverseAutomatonShader,
     },
 };
 
@@ -142,7 +143,6 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> StaticGrid2D<C> {
 impl<C: AutomatonCell<Neighbor = Neighbor2D>> Universe for StaticGrid2D<C> {
     type Cell = C;
     type Coordinates = Coordinates2D;
-    type Diff = GridDiff<C>;
 
     fn get(&self, coords: Self::Coordinates) -> Self::Cell {
         let real_coords = Coordinates2D(coords.x() + self.margin, coords.y() + self.margin);
@@ -171,20 +171,6 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> Universe for StaticGrid2D<C> {
             idx += nbor.y() as usize * self.size_with_margin.columns()
         }
         self.data[idx]
-    }
-
-    fn diff(&self, other: &Self) -> Self::Diff {
-        GridDiff::new(self, other)
-    }
-
-    fn apply_diff(mut self, diff: &Self::Diff) -> Self {
-        let mut new_data = self.data.clone();
-        for (idx, new_cell) in diff.iter() {
-            new_data[*idx] = *new_cell
-        }
-
-        self.data = new_data;
-        self
     }
 }
 
@@ -311,15 +297,23 @@ pub struct GridDiff<C: AutomatonCell> {
 }
 
 impl<C: AutomatonCell<Neighbor = Neighbor2D>> GridDiff<C> {
-    pub fn new(prev_grid: &StaticGrid2D<C>, next_grid: &StaticGrid2D<C>) -> Self {
-        if prev_grid.size() != next_grid.size() {
+    pub fn iter(&self) -> impl Iterator<Item = (&usize, &C)> {
+        self.modifs.iter()
+    }
+}
+
+impl<C: AutomatonCell<Neighbor = Neighbor2D>> GenerationDifference for GridDiff<C> {
+    type Universe = StaticGrid2D<C>;
+
+    fn get_diff(base: &Self::Universe, target: &Self::Universe) -> Self {
+        if base.size() != target.size() {
             panic!(ERR_WRONG_DIMENSIONS)
         }
 
         let mut modifs = HashMap::new();
-        for idx in 0..prev_grid.data.len() {
-            let prev = &prev_grid.data[idx];
-            let next = &next_grid.data[idx];
+        for idx in 0..base.data.len() {
+            let prev = &base.data[idx];
+            let next = &target.data[idx];
             if prev != next {
                 modifs.insert(idx, *next);
             }
@@ -328,13 +322,17 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> GridDiff<C> {
         Self { modifs }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&usize, &C)> {
-        self.modifs.iter()
-    }
-}
+    fn apply_to(&self, mut base: Self::Universe) -> Self::Universe {
+        let mut new_data = base.data.clone();
+        for (idx, new_cell) in self.iter() {
+            new_data[*idx] = *new_cell
+        }
 
-impl<C: AutomatonCell<Neighbor = Neighbor2D>> UniverseDiff for GridDiff<C> {
-    fn no_diff() -> Self {
+        base.data = new_data;
+        base
+    }
+
+    fn empty_diff() -> Self {
         Self {
             modifs: HashMap::new(),
         }

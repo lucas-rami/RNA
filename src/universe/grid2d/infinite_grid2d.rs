@@ -2,13 +2,12 @@
 use std::{
     cell::{Ref, RefCell},
     collections::{HashMap, HashSet},
-    marker::PhantomData,
 };
 
 // CELL
 use crate::{
     automaton::{AutomatonCell, CPUCell, GPUCell},
-    universe::{CPUUniverse, GPUUniverse, Universe, UniverseDiff},
+    universe::{CPUUniverse, GPUUniverse, Universe},
 };
 
 use super::{Coordinates2D, Neighbor2D, SCoordinates2D};
@@ -52,7 +51,7 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> InfiniteGrid2D<C> {
             }
         }
 
-        // Free all chunks that can be freed 
+        // Free all chunks that can be freed
         for coords in to_free {
             self.chunks.remove(&coords);
         }
@@ -71,7 +70,6 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> InfiniteGrid2D<C> {
 impl<C: AutomatonCell<Neighbor = Neighbor2D>> Universe for InfiniteGrid2D<C> {
     type Cell = C;
     type Coordinates = SCoordinates2D;
-    type Diff = InfiniteGridDiff<C>;
 
     fn get(&self, coords: Self::Coordinates) -> Self::Cell {
         let chunk_coords = coords.to_chunk_coordinates(self.chunk_size_pow2);
@@ -120,14 +118,6 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> Universe for InfiniteGrid2D<C> {
             coords.0 + nbor.0 as isize,
             coords.1 + nbor.1 as isize,
         ))
-    }
-
-    fn diff(&self, _other: &Self) -> Self::Diff {
-        todo!()
-    }
-
-    fn apply_diff(self, _diff: &Self::Diff) -> Self {
-        todo!()
     }
 }
 
@@ -394,23 +384,6 @@ impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> Iterator for ChunkLineIterator
         } else {
             None
         }
-    }
-}
-
-/// InfiniteGridDiff
-
-#[derive(Clone)]
-pub struct InfiniteGridDiff<C: AutomatonCell> {
-    _marker: PhantomData<C>,
-}
-
-impl<C: AutomatonCell> UniverseDiff for InfiniteGridDiff<C> {
-    fn no_diff() -> Self {
-        todo!()
-    }
-
-    fn stack(&mut self, _other: &Self) {
-        todo!()
     }
 }
 

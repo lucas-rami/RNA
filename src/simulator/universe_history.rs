@@ -4,17 +4,17 @@ use std::thread;
 // CELL
 use crate::{
     advanced_channels::{MailType, SlaveEndpoint},
-    universe::{Universe, UniverseDiff},
+    universe::{GenerationDifference, Universe},
 };
 
-pub struct UniverseHistory<U: Universe> {
-    diffs: Vec<U::Diff>,
+pub struct UniverseHistory<U: Universe, D: GenerationDifference<Universe = U>> {
+    diffs: Vec<D>,
     checkpoints: Vec<U>,
     f_check: usize,
     last: U,
 }
 
-impl<U: Universe> UniverseHistory<U> {
+impl<U: Universe, D: GenerationDifference<Universe = U>> UniverseHistory<U, D> {
     pub fn new(start_universe: U, f_check: usize) -> Self {
         Self {
             diffs: vec![],
@@ -25,7 +25,7 @@ impl<U: Universe> UniverseHistory<U> {
     }
 
     pub fn push(&mut self, universe: U) {
-        let diff = self.last.diff(&universe);
+        let diff = D::get_diff(&self.last, &universe);
         self.diffs.push(diff);
         if self.f_check != 0 && self.diffs.len() % self.f_check == 0 {
             self.checkpoints.push(universe.clone());
@@ -44,32 +44,28 @@ impl<U: Universe> UniverseHistory<U> {
                 let shift = gen % self.f_check;
 
                 // Accumulate differences between reference grid and target generation
-                let stacked_diffs = U::Diff::stack_mul(&self.diffs[(gen - shift)..gen]);
-                Some(
-                    self.checkpoints[idx as usize]
-                        .clone()
-                        .apply_diff(&stacked_diffs),
-                )
+                let stacked_diffs = D::stack_mul(&self.diffs[(gen - shift)..gen]);
+                Some(stacked_diffs.apply_to(self.checkpoints[idx as usize].clone()))
             } else {
                 // Accumulate differences between initial grid and target generation
-                let stacked_diffs = U::Diff::stack_mul(&self.diffs[0..gen]);
-                Some(self.checkpoints[0].clone().apply_diff(&stacked_diffs))
+                let stacked_diffs = D::stack_mul(&self.diffs[0..gen]);
+                Some(stacked_diffs.apply_to(self.checkpoints[0].clone()))
             }
         }
     }
 
-    pub fn get_diff(&self, ref_gen: usize, target_gen: usize) -> Option<U::Diff> {
+    pub fn get_diff(&self, ref_gen: usize, target_gen: usize) -> Option<D> {
         if target_gen < ref_gen {
             panic!(ERR_INCORRECT_DIFF);
         }
         if self.diffs.len() < target_gen {
             None
         } else {
-            Some(U::Diff::stack_mul(&self.diffs[ref_gen..target_gen]))
+            Some(D::stack_mul(&self.diffs[ref_gen..target_gen]))
         }
     }
 
-    pub fn detach(mut self, endpoint: SlaveEndpoint<HistoryResponse<U>, HistoryRequest<U>>) {
+    pub fn detach(mut self, endpoint: SlaveEndpoint<HistoryResponse<U, D>, HistoryRequest<U>>) {
         thread::spawn(move || loop {
             match endpoint.wait_for_mail() {
                 MailType::Message(msg, None) => match msg {
@@ -145,8 +141,8 @@ pub enum HistoryRequest<U: Universe> {
     GetGen(usize, bool),
 }
 
-pub enum HistoryResponse<U: Universe> {
-    GetDiff(Option<U::Diff>),
+pub enum HistoryResponse<U: Universe, D: GenerationDifference<Universe = U>> {
+    GetDiff(Option<D>),
     GetGen(Option<U>),
 }
 

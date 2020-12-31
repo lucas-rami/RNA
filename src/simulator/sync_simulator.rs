@@ -2,17 +2,17 @@
 use super::{Simulator, UniverseHistory};
 use crate::{
     automaton::{CPUCell, GPUCell},
-    universe::{CPUUniverse, GPUUniverse, Universe},
+    universe::{CPUUniverse, GPUUniverse, GenerationDifference, Universe},
 };
 
-pub struct SyncSimulator<U: Universe> {
+pub struct SyncSimulator<U: Universe, D: GenerationDifference<Universe = U>> {
     current_gen: U,
-    history: UniverseHistory<U>,
+    history: UniverseHistory<U, D>,
     evolve_fn: fn(U) -> U,
     max_gen: usize,
 }
 
-impl<U: Universe> SyncSimulator<U> {
+impl<U: Universe, D: GenerationDifference<Universe = U>> SyncSimulator<U, D> {
     fn new(start_universe: U, f_check: usize, evolve_fn: fn(U) -> U) -> Self {
         Self {
             current_gen: start_universe.clone(),
@@ -23,8 +23,8 @@ impl<U: Universe> SyncSimulator<U> {
     }
 }
 
-impl<U: Universe> Simulator for SyncSimulator<U> {
-    type U = U;
+impl<U: Universe, D: GenerationDifference<Universe = U>> Simulator for SyncSimulator<U, D> {
+    type Universe = U;
 
     fn run(&mut self, nb_gens: usize) {
         let mut universe = self.current_gen.clone();
@@ -41,20 +41,12 @@ impl<U: Universe> Simulator for SyncSimulator<U> {
         self.max_gen
     }
 
-    fn get_generation(&self, gen: usize) -> Option<Self::U> {
+    fn get_generation(&self, gen: usize) -> Option<Self::Universe> {
         self.history.get_gen(gen)
-    }
-
-    fn get_difference(
-        &self,
-        ref_gen: usize,
-        target_gen: usize,
-    ) -> Option<<Self::U as Universe>::Diff> {
-        self.history.get_diff(ref_gen, target_gen)
     }
 }
 
-impl<U: CPUUniverse> SyncSimulator<U>
+impl<U: CPUUniverse, D: GenerationDifference<Universe = U>> SyncSimulator<U, D>
 where
     U::Cell: CPUCell,
 {
@@ -63,7 +55,7 @@ where
     }
 }
 
-impl<U: GPUUniverse> SyncSimulator<U>
+impl<U: GPUUniverse, D: GenerationDifference<Universe = U>> SyncSimulator<U, D>
 where
     U::Cell: GPUCell,
 {
