@@ -34,4 +34,3 @@ pub trait Simulator {
 }
 
 const ERR_EXPECTED_UNIVERSE: &str = "Expected to receive an actual universe.";
-

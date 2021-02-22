@@ -42,7 +42,7 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> InfiniteGrid2D<C> {
         }
     }
 
-    pub fn free_unused_chunks(&mut self) {
+    pub fn free_useless_chunks(&mut self) {
         // Look for chunks that can be freed
         let mut to_free = Vec::new();
         for (coords, chunk) in self.chunks.iter() {
@@ -53,7 +53,7 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> InfiniteGrid2D<C> {
 
         // Free all chunks that can be freed
         for coords in to_free {
-            self.chunks.remove(&coords);
+            self.free_chunk(coords);
         }
 
         // Reset the garbage collection countdown timer
@@ -61,9 +61,18 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> InfiniteGrid2D<C> {
     }
 
     #[inline]
-    fn create_chunk(&self, coords: SCoordinates2D) -> Chunk<C> {
+    fn create_chunk(&self, coords: SCoordinates2D) -> Option<Chunk<C>> {
         // TODO We should never create a chunk near the isize underflow/overflow boundary
-        Chunk::new(coords, 1 << self.chunk_size_pow2, self.boundary_size)
+        Some(Chunk::new(
+            coords,
+            1 << self.chunk_size_pow2,
+            self.boundary_size,
+        ))
+    }
+
+    #[inline]
+    fn free_chunk(&mut self, coords: SCoordinates2D) {
+        self.chunks.remove(&coords);
     }
 }
 
@@ -89,9 +98,10 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> Universe for InfiniteGrid2D<C> {
                 chunk.set(coords_in_chunk, val);
             }
             None => {
-                let mut new_chunk = self.create_chunk(chunk_coords);
-                new_chunk.set(coords_in_chunk, val);
-                self.chunks.insert(chunk_coords, new_chunk);
+                if let Some(mut new_chunk) = self.create_chunk(chunk_coords) {
+                    new_chunk.set(coords_in_chunk, val);
+                    self.chunks.insert(chunk_coords, new_chunk);
+                }
             }
         }
 
@@ -102,8 +112,9 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> Universe for InfiniteGrid2D<C> {
             chunk.get_adjacent_chunks(coords_in_chunk, &mut adjacent_chunks);
             for adj_chunk_coords in adjacent_chunks {
                 if !self.chunks.contains_key(&adj_chunk_coords) {
-                    let new_chunk = self.create_chunk(adj_chunk_coords);
-                    self.chunks.insert(adj_chunk_coords, new_chunk);
+                    if let Some(new_chunk) = self.create_chunk(adj_chunk_coords) {
+                        self.chunks.insert(adj_chunk_coords, new_chunk);
+                    }
                 }
             }
         }
@@ -115,34 +126,35 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> Universe for InfiniteGrid2D<C> {
         nbor: <Self::Cell as AutomatonCell>::Neighbor,
     ) -> Self::Cell {
         self.get(SCoordinates2D(
-            coords.0 + nbor.0 as isize,
-            coords.1 + nbor.1 as isize,
+            coords.x() + isize::from(nbor.x()),
+            coords.y() + isize::from(nbor.y()),
         ))
     }
 }
 
 impl<C: CPUCell<Neighbor = Neighbor2D>> CPUUniverse for InfiniteGrid2D<C> {
     fn cpu_evolve_once(mut self) -> Self {
-        let mut all_chunks = HashSet::new();
+        let mut all_adjacent_chunks = HashSet::new();
         for (_coords, chunk) in self.chunks.iter() {
             // Update the chunk and collect set of adjacent chunks that need to be added to the universe
-            for adjacent_chunk_coords in chunk.evolve(&self) {
-                all_chunks.insert(adjacent_chunk_coords);
+            for adjacent_chunk_coords in chunk.compute_next_gen(&self) {
+                all_adjacent_chunks.insert(adjacent_chunk_coords);
             }
         }
 
         // Add all collected adjacent chunks to the universe
-        for chunk_coords in all_chunks {
+        for chunk_coords in all_adjacent_chunks {
             if !self.chunks.contains_key(&chunk_coords) {
-                let new_chunk = self.create_chunk(chunk_coords);
-                self.chunks.insert(chunk_coords, new_chunk);
+                if let Some(new_chunk) = self.create_chunk(chunk_coords) {
+                    self.chunks.insert(chunk_coords, new_chunk);
+                }
             }
         }
 
         // Trigger garbage collection procedure at a fixed rate
         self.gc_countdown -= 1;
         if self.gc_countdown == 0 {
-            self.free_unused_chunks();
+            self.free_useless_chunks();
         }
 
         // Return the updated universe
@@ -160,6 +172,7 @@ pub struct Chunk<C: AutomatonCell> {
     coordinates: SCoordinates2D,
     size: usize,
     boundary_size: usize,
+    inner_swap: RefCell<Option<ChunkInner<C>>>,
 }
 
 impl<C: AutomatonCell<Neighbor = Neighbor2D>> Chunk<C> {
@@ -178,6 +191,7 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> Chunk<C> {
             coordinates,
             size,
             boundary_size,
+            inner_swap: RefCell::new(None),
         }
     }
 
@@ -252,11 +266,12 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> Chunk<C> {
 }
 
 impl<C: CPUCell<Neighbor = Neighbor2D>> Chunk<C> {
-    fn evolve(&self, grid: &InfiniteGrid2D<C>) -> HashSet<SCoordinates2D> {
+    fn compute_next_gen(&self, grid: &InfiniteGrid2D<C>) -> HashSet<SCoordinates2D> {
+        println!("Evolving chunk {:?}", self.coordinates);
         let world_coords = self.coordinates.to_universe_coordinates(self.size);
         let default_cell = C::default();
 
-        let mut new_data = Vec::with_capacity(self.size * self.size);
+        let mut data = Vec::with_capacity(self.size * self.size);
         let (mut min_x, mut max_x, mut min_y, mut max_y) = (0usize, usize::MAX, 0usize, usize::MAX);
         let mut is_empty = true;
 
@@ -271,6 +286,7 @@ impl<C: CPUCell<Neighbor = Neighbor2D>> Chunk<C> {
                 let new_cell = cell.update(grid, cell_world_coords);
 
                 if new_cell != default_cell {
+                    println!("non-default cell");
                     // Update min/max coordinates of updated cells
                     if x < min_x {
                         min_x = x;
@@ -288,7 +304,7 @@ impl<C: CPUCell<Neighbor = Neighbor2D>> Chunk<C> {
                 }
 
                 // Append cell to new data vector
-                new_data.push(new_cell);
+                data.push(new_cell);
             }
         }
 
@@ -299,11 +315,13 @@ impl<C: CPUCell<Neighbor = Neighbor2D>> Chunk<C> {
             self.get_adjacent_chunks(Coordinates2D(max_x, max_y), &mut adjacent_chunks);
         }
 
-        // * Modify interior cell and return
-        let mut inner = self.inner.borrow_mut();
-        inner.data = new_data;
-        inner.is_empty = is_empty;
+        // Store new data in the swap and return
+        *self.inner_swap.borrow_mut() = Some(ChunkInner { data, is_empty });
         adjacent_chunks
+    }
+
+    fn swap_next_gen(&mut self) {
+        let next_gen = std::mem::replace(self.inner_swap.borrow_mut(), None);
     }
 }
 
@@ -401,3 +419,23 @@ const NEIGHBORS: [SCoordinates2D; 8] = [
 
 const ERR_CHUNK_TOO_SMALL: &str =
     "The boundary size must be at least twice as big as the chunk size.";
+
+#[cfg(test)]
+mod tests {
+    use crate::{automaton::game_of_life, universe::grid2d::SCoordinates2D};
+
+    use super::{CPUUniverse, InfiniteGrid2D};
+
+    #[test]
+    fn cpu_evolution() {
+        // Create LWSS
+        let base_coords = SCoordinates2D(0, 0);
+        let mut grid = InfiniteGrid2D::new(3);
+        game_of_life::create_lwss(&mut grid, base_coords);
+        assert!(game_of_life::check_lwss(&grid, base_coords, 0));
+
+        // Start LWSS
+        let grid = grid.cpu_evolve_once();
+        assert!(game_of_life::check_lwss(&grid, base_coords, 1));
+    }
+}

@@ -6,6 +6,8 @@ use crate::{
     automaton::{AutomatonCell, CPUCell, TermDrawableAutomaton},
     universe::{
         grid2d::{
+            infinite_grid2d::InfiniteGrid2D,
+            SCoordinates2D,
             {static_grid2d::StaticGrid2D, Coordinates2D, Size2D},
             {Neighbor2D, MOORE_NEIGHBORHOOD},
         },
@@ -164,6 +166,112 @@ pub fn is_penta_decathlon(grid: &StaticGrid2D<GameOfLife>) -> bool {
         }
     }
     nb_alives == 0
+}
+
+const LWSS_P0: [SCoordinates2D; 9] = [
+    SCoordinates2D(0, 0),
+    SCoordinates2D(3, 0),
+    SCoordinates2D(4, -1),
+    SCoordinates2D(0, -2),
+    SCoordinates2D(4, -2),
+    SCoordinates2D(1, -3),
+    SCoordinates2D(2, -3),
+    SCoordinates2D(3, -3),
+    SCoordinates2D(4, -3),
+];
+
+const LWSS_P1: [SCoordinates2D; 12] = [
+    SCoordinates2D(2, -1),
+    SCoordinates2D(3, -1),
+    SCoordinates2D(0, -2),
+    SCoordinates2D(1, -2),
+    SCoordinates2D(3, -2),
+    SCoordinates2D(4, -2),
+    SCoordinates2D(0, -3),
+    SCoordinates2D(1, -3),
+    SCoordinates2D(2, -3),
+    SCoordinates2D(3, -3),
+    SCoordinates2D(1, -4),
+    SCoordinates2D(2, -4),
+];
+
+const LWSS_P2: [SCoordinates2D; 9] = [
+    SCoordinates2D(0, -1),
+    SCoordinates2D(1, -1),
+    SCoordinates2D(2, -1),
+    SCoordinates2D(3, -1),
+    SCoordinates2D(-1, -2),
+    SCoordinates2D(3, -2),
+    SCoordinates2D(3, -3),
+    SCoordinates2D(-1, -4),
+    SCoordinates2D(2, -4),
+];
+
+const LWSS_P3: [SCoordinates2D; 12] = [
+    SCoordinates2D(0, 0),
+    SCoordinates2D(1, 0),
+    SCoordinates2D(-1, -1),
+    SCoordinates2D(0, -1),
+    SCoordinates2D(1, -1),
+    SCoordinates2D(2, -1),
+    SCoordinates2D(-1, -2),
+    SCoordinates2D(0, -2),
+    SCoordinates2D(2, -2),
+    SCoordinates2D(3, -2),
+    SCoordinates2D(1, -3),
+    SCoordinates2D(2, -3),
+];
+
+pub fn create_lwss(grid: &mut InfiniteGrid2D<GameOfLife>, base_coords: SCoordinates2D) {
+    for c in &LWSS_P0 {
+        let cell_coords = SCoordinates2D(base_coords.x() + c.x(), base_coords.y() + c.y());
+        grid.set(cell_coords, GameOfLife::Alive);
+    }
+}
+
+pub fn check_lwss(
+    grid: &InfiniteGrid2D<GameOfLife>,
+    base_coords: SCoordinates2D,
+    gen: usize,
+) -> bool {
+    // Compute new base coordinates and select correct phase
+    let nb_cycles = gen / 4;
+    let phase_number = gen % 4;
+    let x_shift = {
+        if phase_number == 3 {
+            2
+        } else if phase_number >= 1 {
+            1
+        } else {
+            0
+        }
+    };
+    let coords = SCoordinates2D(
+        base_coords.x() + 2 * (nb_cycles as isize) + x_shift,
+        base_coords.y(),
+    );
+
+    // Check that the current phase is correct
+    let phase = {
+        if phase_number == 0 {
+            LWSS_P0.iter()
+        } else if phase_number == 1 {
+            LWSS_P1.iter()
+        } else if phase_number == 2 {
+            LWSS_P2.iter()
+        } else {
+            LWSS_P3.iter()
+        }
+    };
+    for c in phase {
+        let cell_coords = SCoordinates2D(coords.x() + c.x(), coords.y() + c.y());
+        if grid.get(cell_coords) != GameOfLife::Alive {
+            println!("Cell @ coordinates {:?} is wrong.", c);
+            // return false;
+        }
+    }
+
+    true
 }
 
 // pub fn gosper_glider_gun() -> Grid<GameOfLife> {
