@@ -181,45 +181,45 @@ const LWSS_P0: [SCoordinates2D; 9] = [
 ];
 
 const LWSS_P1: [SCoordinates2D; 12] = [
-    SCoordinates2D(2, -1),
     SCoordinates2D(3, -1),
-    SCoordinates2D(0, -2),
+    SCoordinates2D(4, -1),
     SCoordinates2D(1, -2),
-    SCoordinates2D(3, -2),
+    SCoordinates2D(2, -2),
     SCoordinates2D(4, -2),
-    SCoordinates2D(0, -3),
+    SCoordinates2D(5, -2),
     SCoordinates2D(1, -3),
     SCoordinates2D(2, -3),
     SCoordinates2D(3, -3),
-    SCoordinates2D(1, -4),
+    SCoordinates2D(4, -3),
     SCoordinates2D(2, -4),
+    SCoordinates2D(3, -4),
 ];
 
 const LWSS_P2: [SCoordinates2D; 9] = [
-    SCoordinates2D(0, -1),
-    SCoordinates2D(1, -1),
     SCoordinates2D(2, -1),
     SCoordinates2D(3, -1),
-    SCoordinates2D(-1, -2),
-    SCoordinates2D(3, -2),
-    SCoordinates2D(3, -3),
-    SCoordinates2D(-1, -4),
-    SCoordinates2D(2, -4),
+    SCoordinates2D(4, -1),
+    SCoordinates2D(5, -1),
+    SCoordinates2D(1, -2),
+    SCoordinates2D(5, -2),
+    SCoordinates2D(5, -3),
+    SCoordinates2D(1, -4),
+    SCoordinates2D(4, -4),
 ];
 
 const LWSS_P3: [SCoordinates2D; 12] = [
-    SCoordinates2D(0, 0),
-    SCoordinates2D(1, 0),
-    SCoordinates2D(-1, -1),
-    SCoordinates2D(0, -1),
-    SCoordinates2D(1, -1),
+    SCoordinates2D(3, 0),
+    SCoordinates2D(4, 0),
     SCoordinates2D(2, -1),
-    SCoordinates2D(-1, -2),
-    SCoordinates2D(0, -2),
+    SCoordinates2D(3, -1),
+    SCoordinates2D(5, -1),
+    SCoordinates2D(5, -1),
     SCoordinates2D(2, -2),
     SCoordinates2D(3, -2),
-    SCoordinates2D(1, -3),
-    SCoordinates2D(2, -3),
+    SCoordinates2D(5, -2),
+    SCoordinates2D(6, -2),
+    SCoordinates2D(4, -3),
+    SCoordinates2D(5, -3),
 ];
 
 pub fn create_lwss(grid: &mut InfiniteGrid2D<GameOfLife>, base_coords: SCoordinates2D) {
@@ -237,17 +237,8 @@ pub fn check_lwss(
     // Compute new base coordinates and select correct phase
     let nb_cycles = gen / 4;
     let phase_number = gen % 4;
-    let x_shift = {
-        if phase_number == 3 {
-            2
-        } else if phase_number >= 1 {
-            1
-        } else {
-            0
-        }
-    };
     let coords = SCoordinates2D(
-        base_coords.x() + 2 * (nb_cycles as isize) + x_shift,
+        base_coords.x() + 2 * (nb_cycles as isize),
         base_coords.y(),
     );
 
@@ -266,11 +257,9 @@ pub fn check_lwss(
     for c in phase {
         let cell_coords = SCoordinates2D(coords.x() + c.x(), coords.y() + c.y());
         if grid.get(cell_coords) != GameOfLife::Alive {
-            println!("Cell @ coordinates {:?} is wrong.", c);
-            // return false;
+            return false;
         }
     }
-
     true
 }
 
