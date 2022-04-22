@@ -6,7 +6,7 @@ use vulkano::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use vulkano::device::Device;
 use vulkano::pipeline::ComputePipelineAbstract;
 
-// CELL
+// Local
 pub mod grid2d;
 use crate::automaton::{AutomatonCell, CPUCell, GPUCell};
 

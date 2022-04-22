@@ -4,7 +4,7 @@ use std::fmt::Debug;
 // External libraries
 use crossterm::style::StyledContent;
 
-// CELL
+// Local
 pub mod game_of_life;
 use crate::universe::CPUUniverse;
 

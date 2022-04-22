@@ -4,7 +4,7 @@ use std::{
     collections::{HashMap, HashSet},
 };
 
-// CELL
+// Local
 use crate::{
     automaton::{AutomatonCell, CPUCell, GPUCell},
     universe::{CPUUniverse, GPUUniverse, Universe},

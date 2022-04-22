@@ -1,7 +1,7 @@
 // External libraries
 use crossterm::style::{style, Attribute, Color, StyledContent};
 
-// CELL
+// Local
 use crate::{
     automaton::{AutomatonCell, CPUCell, TermDrawableAutomaton},
     universe::{

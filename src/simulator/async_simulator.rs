@@ -1,7 +1,7 @@
 // Standard library
 use std::thread;
 
-// CELL
+// Local
 use super::{
     universe_history::{HistoryRequest, HistoryResponse, UniverseHistory},
     Simulator,

@@ -1,7 +1,7 @@
 // Standard library
 use std::thread;
 
-// CELL
+// Local
 use crate::{
     advanced_channels::{MailType, SlaveEndpoint},
     universe::{GenerationDifference, Universe},

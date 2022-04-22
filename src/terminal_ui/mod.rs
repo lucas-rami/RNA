@@ -11,7 +11,7 @@ use crossterm::{
     terminal,
 };
 
-// CELL
+// Local
 mod module;
 mod styled_text;
 use crate::automaton::TermDrawableAutomaton;

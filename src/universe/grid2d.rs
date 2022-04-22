@@ -2,7 +2,7 @@
 use std::fmt::Debug;
 use std::hash::Hash;
 
-// CELL
+// Local
 pub mod infinite_grid2d;
 pub mod static_grid2d;
 

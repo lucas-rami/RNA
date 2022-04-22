@@ -12,7 +12,7 @@ use vulkano::{
     sync::{self, GpuFuture, NowFuture},
 };
 
-// CELL
+// Local
 use super::{Coordinates2D, Neighbor2D, Size2D};
 use crate::{
     automaton::{AutomatonCell, CPUCell, GPUCell},

@@ -1,4 +1,4 @@
-// CELL
+// Local
 use super::{Simulator, UniverseHistory};
 use crate::{
     automaton::{CPUCell, GPUCell},
