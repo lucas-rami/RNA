@@ -27,7 +27,7 @@ impl<U: Universe, D: GenerationDifference<Universe = U>> AsyncSimulator<U, D> {
             .send_and_wait_for_response(HistoryRequest::GetGen(gen, blocking))
         {
             HistoryResponse::GetGen(opt_universe) => opt_universe,
-            _ => panic!(ERR_INCORRECT_RESPONSE),
+            _ => panic!("{}", ERR_INCORRECT_RESPONSE),
         }
     }
 }

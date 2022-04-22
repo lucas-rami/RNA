@@ -46,10 +46,10 @@ impl Coordinates2D {
 
     pub fn to_idx(&self, size: &Size2D) -> usize {
         if !(self.0 < size.columns() && self.1 < size.lines()) {
-            panic!(format!(
+            panic!(
                 "Coordinates2D ({:?}) not within Size2D ({:?}).",
                 *self, *size
-            ))
+            )
         }
         self.0 + self.1 * size.columns()
     }

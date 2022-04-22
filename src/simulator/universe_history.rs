@@ -56,7 +56,7 @@ impl<U: Universe, D: GenerationDifference<Universe = U>> UniverseHistory<U, D> {
 
     pub fn get_diff(&self, ref_gen: usize, target_gen: usize) -> Option<D> {
         if target_gen < ref_gen {
-            panic!(ERR_INCORRECT_DIFF);
+            panic!("{}", ERR_INCORRECT_DIFF);
         }
         if self.diffs.len() < target_gen {
             None
@@ -70,7 +70,7 @@ impl<U: Universe, D: GenerationDifference<Universe = U>> UniverseHistory<U, D> {
             match endpoint.wait_for_mail() {
                 MailType::Message(msg, None) => match msg {
                     HistoryRequest::Push(grid) => self.push(grid),
-                    _ => panic!(ERR_INCOMPATIBLE_MAIL_TYPE),
+                    _ => panic!("{}", ERR_INCOMPATIBLE_MAIL_TYPE),
                 },
                 MailType::Message(msg, Some(req)) => match msg {
                     HistoryRequest::GetGen(gen, blocking) => match self.get_gen(gen) {
@@ -90,7 +90,7 @@ impl<U: Universe, D: GenerationDifference<Universe = U>> UniverseHistory<U, D> {
                                                 break;
                                             }
                                         }
-                                        _ => panic!(ERR_INCOMPATIBLE_MAIL_TYPE),
+                                        _ => panic!("{}", ERR_INCOMPATIBLE_MAIL_TYPE),
                                     }
                                 }
                             } else {
@@ -118,7 +118,7 @@ impl<U: Universe, D: GenerationDifference<Universe = U>> UniverseHistory<U, D> {
                                                     break;
                                                 }
                                             }
-                                            _ => panic!(ERR_INCOMPATIBLE_MAIL_TYPE),
+                                            _ => panic!("{}", ERR_INCOMPATIBLE_MAIL_TYPE),
                                         }
                                     }
                                 } else {
@@ -127,7 +127,7 @@ impl<U: Universe, D: GenerationDifference<Universe = U>> UniverseHistory<U, D> {
                             }
                         }
                     }
-                    _ => panic!(ERR_INCOMPATIBLE_MAIL_TYPE),
+                    _ => panic!("{}", ERR_INCOMPATIBLE_MAIL_TYPE),
                 },
                 MailType::DeadChannel => break,
             }

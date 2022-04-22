@@ -42,7 +42,7 @@ impl AutomatonCell for GameOfLife {
         match id {
             0 => GameOfLife::Dead,
             1 => GameOfLife::Alive,
-            _ => panic!(format!("Decoding failed: unkwnon encoding {}.", id)),
+            _ => panic!("Decoding failed: unkwnon encoding {}.", id),
         }
     }
 
@@ -237,10 +237,7 @@ pub fn check_lwss(
     // Compute new base coordinates and select correct phase
     let nb_cycles = gen / 4;
     let phase_number = gen % 4;
-    let coords = SCoordinates2D(
-        base_coords.x() + 2 * (nb_cycles as isize),
-        base_coords.y(),
-    );
+    let coords = SCoordinates2D(base_coords.x() + 2 * (nb_cycles as isize), base_coords.y());
 
     // Check that the current phase is correct
     let phase = {

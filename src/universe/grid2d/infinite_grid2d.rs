@@ -31,7 +31,7 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> InfiniteGrid2D<C> {
 
         // Equivalent to (2 * boundary) > 2^chunk_size_pow2
         if (boundary_size << 1) > (1 << chunk_size_pow2) {
-            panic!(ERR_CHUNK_TOO_SMALL);
+            panic!("{}", ERR_CHUNK_TOO_SMALL);
         }
 
         Self {

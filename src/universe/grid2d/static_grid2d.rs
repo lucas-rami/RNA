@@ -37,7 +37,7 @@ pub struct StaticGrid2D<C: AutomatonCell> {
 impl<C: AutomatonCell<Neighbor = Neighbor2D>> StaticGrid2D<C> {
     pub fn new(data: Vec<C>, size: Size2D) -> Self {
         if data.len() != size.total() {
-            panic!(ERR_DIMENSIONS_SIZE)
+            panic!("{}", ERR_DIMENSIONS_SIZE)
         }
 
         // Determine the required margin around the actual data
@@ -117,7 +117,7 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> StaticGrid2D<C> {
         }
 
         if decoded.len() != total_size {
-            panic!(ERR_DECODED_SIZE);
+            panic!("{}", ERR_DECODED_SIZE);
         }
 
         Self {
@@ -307,7 +307,7 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> GenerationDifference for GridDiff<
 
     fn get_diff(base: &Self::Universe, target: &Self::Universe) -> Self {
         if base.size() != target.size() {
-            panic!(ERR_WRONG_DIMENSIONS)
+            panic!("{}", ERR_WRONG_DIMENSIONS)
         }
 
         let mut modifs = HashMap::new();
@@ -395,7 +395,7 @@ where
         // Create GPU buffers
         let gpu_bufs = {
             if nb_nodes < 2 {
-                panic!(ERR_NB_NODES)
+                panic!("{}", ERR_NB_NODES)
             }
             let mut gpu_bufs = Vec::with_capacity(nb_nodes);
             let total_size = grid.size_with_margin.total();

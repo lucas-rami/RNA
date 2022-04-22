@@ -36,13 +36,13 @@ impl<T, R> MasterEndpoint<T, R> {
 
         match self.rx.recv() {
             Ok(response) => response,
-            Err(_) => panic!(ERR_DEAD_SLAVE),
+            Err(_) => panic!("{}", ERR_DEAD_SLAVE),
         }
     }
 
     fn send_raw(&self, msg: MessageType<T>) {
         if let Err(_) = self.tx.send(msg) {
-            panic!(ERR_DEAD_SLAVE);
+            panic!("{}", ERR_DEAD_SLAVE);
         }
     }
 
@@ -94,9 +94,9 @@ impl<T, R> SlaveEndpoint<T, R> {
         match self.rx.recv() {
             Ok(msg) => match msg {
                 MessageType::Message(msg, false) => msg,
-                _ => panic!(ERR_DEAD_MASTER),
+                _ => panic!("{}", ERR_DEAD_MASTER),
             },
-            Err(_) => panic!(ERR_DEAD_MASTER),
+            Err(_) => panic!("{}", ERR_DEAD_MASTER),
         }
     }
 }
@@ -116,7 +116,7 @@ impl<'a, T> Request<'a, T> {
 
     pub fn respond(mut self, response: T) {
         if let Err(_) = self.tx.send(response) {
-            panic!(ERR_DEAD_MASTER);
+            panic!("{}", ERR_DEAD_MASTER);
         }
         self.is_answered = true;
     }
@@ -125,7 +125,7 @@ impl<'a, T> Request<'a, T> {
 impl<'a, T> Drop for Request<'a, T> {
     fn drop(&mut self) {
         if !self.is_answered {
-            panic!(ERR_NO_RESPONSE);
+            panic!("{}", ERR_NO_RESPONSE);
         }
     }
 }
@@ -165,7 +165,7 @@ impl<T> TransmittingEnd for SimpleSender<T> {
 
     fn send(&self, msg: Self::MSG) {
         if let Err(_) = self.tx.send(msg) {
-            panic!(ERR_DEAD_SLAVE);
+            panic!("{}", ERR_DEAD_SLAVE);
         }
     }
 }
