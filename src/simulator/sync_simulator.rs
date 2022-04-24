@@ -26,15 +26,15 @@ impl<U: Universe, D: GenerationDifference<Universe = U>> SyncSimulator<U, D> {
 impl<U: Universe, D: GenerationDifference<Universe = U>> Simulator for SyncSimulator<U, D> {
     type Universe = U;
 
-    fn run(&mut self, nb_gens: usize) {
+    fn run(&mut self, n_gens: usize) {
         let mut universe = self.current_gen.clone();
         let evolve_once = self.evolve_fn;
-        for _ in 0..nb_gens {
+        for _ in 0..n_gens {
             universe = evolve_once(universe);
             self.history.push(universe.clone());
         }
         self.current_gen = universe;
-        self.max_gen += nb_gens;
+        self.max_gen += n_gens;
     }
 
     fn get_highest_generation(&self) -> usize {

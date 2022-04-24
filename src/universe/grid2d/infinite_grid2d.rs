@@ -207,23 +207,23 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> Chunk<C> {
         let inner = self.inner.borrow();
 
         // A chunk is safe for deletion if it's empty and all surrounding chunks are also empty
-        if inner.is_empty {
-            let x = self.coordinates.x();
-            let y = self.coordinates.y();
+        if !inner.is_empty {
+            return false;
+        }
 
-            // Check that all surrounding chunks are empty
-            for rel_coords in &NEIGHBORS {
-                let nbor_coords = SCoordinates2D(x + rel_coords.x(), y + rel_coords.y());
-                if let Some(nbor_chunk) = chunks.get(&nbor_coords) {
-                    if !nbor_chunk.inner.borrow().is_empty {
-                        return false;
-                    }
+        let x = self.coordinates.x();
+        let y = self.coordinates.y();
+
+        // Check that all surrounding chunks are empty
+        for rel_coords in &NEIGHBORS {
+            let nbor_coords = SCoordinates2D(x + rel_coords.x(), y + rel_coords.y());
+            if let Some(nbor_chunk) = chunks.get(&nbor_coords) {
+                if !nbor_chunk.inner.borrow().is_empty {
+                    return false;
                 }
             }
-            true
-        } else {
-            false
         }
+        true
     }
 
     fn get_adjacent_chunks(

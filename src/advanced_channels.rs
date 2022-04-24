@@ -82,7 +82,9 @@ impl<T, R> SlaveEndpoint<T, R> {
     pub fn wait_for_mail<'a>(&'a self) -> MailType<'a, T, R> {
         match self.rx.recv() {
             Ok(msg) => match msg {
-                MessageType::Message(msg, true) => MailType::Message(msg, Some(Request::new(&self.tx))),
+                MessageType::Message(msg, true) => {
+                    MailType::Message(msg, Some(Request::new(&self.tx)))
+                }
                 MessageType::Message(msg, false) => MailType::Message(msg, None),
                 MessageType::DeadChannel => MailType::DeadChannel,
             },
@@ -156,8 +158,6 @@ impl<T> SimpleSender<T> {
     fn new(tx: Sender<T>) -> Self {
         Self { tx }
     }
-
-    
 }
 
 impl<T> TransmittingEnd for SimpleSender<T> {

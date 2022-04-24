@@ -29,9 +29,9 @@ pub trait CPUUniverse: Universe
 where
     Self::Cell: CPUCell,
 {
-    fn cpu_evolve(self, nb_gens: usize) -> Self {
+    fn cpu_evolve(self, n_gens: usize) -> Self {
         let mut universe = self;
-        for _ in 0..nb_gens {
+        for _ in 0..n_gens {
             universe = universe.cpu_evolve_once();
         }
         universe
@@ -41,9 +41,9 @@ where
         self.cpu_evolve(1)
     }
 
-    fn cpu_evolve_callback(self, nb_gens: usize, callback: impl Fn(&Self) -> ()) -> Self {
+    fn cpu_evolve_callback(self, n_gens: usize, callback: impl Fn(&Self) -> ()) -> Self {
         let mut universe = self;
-        for _ in 0..nb_gens {
+        for _ in 0..n_gens {
             universe = universe.cpu_evolve_once();
             callback(&universe);
         }

@@ -10,7 +10,7 @@ use universe_history::UniverseHistory;
 pub trait Simulator {
     type Universe: Universe;
 
-    fn run(&mut self, nb_gens: usize);
+    fn run(&mut self, n_gens: usize);
 
     fn get_highest_generation(&self) -> usize;
 
@@ -22,15 +22,4 @@ pub trait Simulator {
             self.run(target_gen - max_gen);
         }
     }
-
-    fn run_to_generation(&mut self, target_gen: usize) -> Self::Universe {
-        let max_gen = self.get_highest_generation();
-        if max_gen < target_gen {
-            self.run(target_gen - max_gen);
-        }
-        self.get_generation(target_gen)
-            .expect(ERR_EXPECTED_UNIVERSE)
-    }
 }
-
-const ERR_EXPECTED_UNIVERSE: &str = "Expected to receive an actual universe.";

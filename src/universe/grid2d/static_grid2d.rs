@@ -178,8 +178,8 @@ impl<C: CPUCell<Neighbor = Neighbor2D>> CPUUniverse for StaticGrid2D<C> {
     fn cpu_evolve_once(mut self) -> Self {
         // Compute new grid
         let mut new_data = vec![C::default(); self.size_with_margin.total()];
-        for col_iter in self.iter() {
-            for (coords, cell) in col_iter {
+        for line_iter in self.iter() {
+            for (coords, cell) in line_iter {
                 let new_cell = cell.update(&self, coords);
                 let real_coords = Coordinates2D(coords.x() + self.margin, coords.y() + self.margin);
                 new_data[real_coords.to_idx(&self.size_with_margin)] = new_cell;
@@ -207,12 +207,12 @@ impl<C: GPUCell<Neighbor = Neighbor2D>> GPUUniverse for StaticGrid2D<C>
 where
     StaticGrid2D<C>: UniverseAutomatonShader<C>,
 {
-    fn gpu_evolve(mut self, nb_gens: usize) -> Self {
-        self.get_gpu_handle().run(nb_gens)
+    fn gpu_evolve(mut self, n_gens: usize) -> Self {
+        self.get_gpu_handle().run(n_gens)
     }
 
-    fn gpu_evolve_callback(mut self, nb_gens: usize, callback: impl Fn(&Self)) -> Self {
-        self.get_gpu_handle().run_mailbox(nb_gens, callback)
+    fn gpu_evolve_callback(mut self, n_gens: usize, callback: impl Fn(&Self)) -> Self {
+        self.get_gpu_handle().run_mailbox(n_gens, callback)
     }
 }
 
@@ -246,9 +246,9 @@ impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> Iterator for StaticGrid2DItera
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.line_idx < self.grid.size.lines() {
-            let col_iterator = StaticGrid2DLineIterator::new(self.grid, self.line_idx);
+            let line_iter = StaticGrid2DLineIterator::new(self.grid, self.line_idx);
             self.line_idx += 1;
-            Some(col_iterator)
+            Some(line_iter)
         } else {
             None
         }
@@ -356,7 +356,6 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> GenerationDifference for GridDiff<
 struct GPUCompute<C: AutomatonCell> {
     size: Size2D,
     device: Arc<Device>,
-    queue: Arc<Queue>,
     nodes: Vec<ComputeNode<C>>,
     next: usize,
 }
@@ -365,7 +364,7 @@ impl<C: GPUCell<Neighbor = Neighbor2D>> GPUCompute<C>
 where
     StaticGrid2D<C>: UniverseAutomatonShader<C>,
 {
-    fn new(grid: &StaticGrid2D<C>, nb_nodes: usize) -> Self {
+    fn new(grid: &StaticGrid2D<C>, n_nodes: usize) -> Self {
         // Create a logical device and compute queue
         let (device, queue) = {
             // Create a Vulkan instance and physical device
@@ -378,7 +377,7 @@ where
                 .find(|&q| q.supports_compute())
                 .unwrap();
 
-            // Create a logical device and retreive the compute queue handle
+            // Create a logical device and retrieve the compute queue handle
             let (device, mut queues) = Device::new(
                 physical,
                 physical.supported_features(),
@@ -394,12 +393,12 @@ where
 
         // Create GPU buffers
         let gpu_bufs = {
-            if nb_nodes < 2 {
-                panic!("{}", ERR_NB_NODES)
+            if n_nodes < 2 {
+                panic!("{}", ERR_N_NODES)
             }
-            let mut gpu_bufs = Vec::with_capacity(nb_nodes);
+            let mut gpu_bufs = Vec::with_capacity(n_nodes);
             let total_size = grid.size_with_margin.total();
-            for _ in 0..nb_nodes {
+            for _ in 0..n_nodes {
                 let q_family = vec![queue.family()];
                 let buf: Arc<DeviceLocalBuffer<[C::Encoded]>> = DeviceLocalBuffer::array(
                     Arc::clone(&device),
@@ -415,10 +414,10 @@ where
 
         // Create compute nodes
         let nodes = {
-            let mut nodes = Vec::with_capacity(nb_nodes);
-            for i in 0..nb_nodes {
+            let mut nodes = Vec::with_capacity(n_nodes);
+            for i in 0..n_nodes {
                 let j = {
-                    if i == nb_nodes - 1 {
+                    if i == n_nodes - 1 {
                         0
                     } else {
                         i + 1
@@ -469,25 +468,24 @@ where
         Self {
             size: grid.size,
             device,
-            queue,
             nodes,
             next: 0,
         }
     }
 
-    fn run(&mut self, nb_gens: usize) -> StaticGrid2D<C> {
+    fn run(&mut self, n_gens: usize) -> StaticGrid2D<C> {
         // Total number of compute nodes
-        let nb_nodes = self.nodes.len();
+        let n_nodes = self.nodes.len();
 
         // Update next pointer for further calls to run()
         let start_node = self.next;
-        self.next = (self.next + nb_gens) % nb_nodes;
+        self.next = (self.next + n_gens) % n_nodes;
 
-        // Chain nb_gens execution command buffers and copy back data from last node
+        // Chain n_gens execution command buffers and copy back data from last node
         let mut next_exe_node = start_node;
-        let cpy_node = (start_node + nb_gens - 1) % nb_nodes;
+        let cpy_node = (start_node + n_gens - 1) % n_nodes;
         let mut future = Box::new(sync::now(Arc::clone(&self.device))) as Box<dyn GpuFuture>;
-        for _i in 0..nb_gens {
+        for _ in 0..n_gens {
             future = Box::new(self.nodes[next_exe_node].exe(future));
             next_exe_node = self.wrap_ptr(next_exe_node)
         }
@@ -500,11 +498,11 @@ where
 
     fn run_mailbox(
         &mut self,
-        nb_gens: usize,
+        n_gens: usize,
         callback: impl Fn(&StaticGrid2D<C>) -> (),
     ) -> StaticGrid2D<C> {
         // Total number of compute nodes
-        let nb_nodes = self.nodes.len();
+        let n_nodes = self.nodes.len();
 
         let min = |a, b| {
             if a < b {
@@ -518,14 +516,14 @@ where
 
         // Update next pointer for further calls to run()
         let start_node = self.next;
-        self.next = (self.next + nb_gens) % nb_nodes;
+        self.next = (self.next + n_gens) % n_nodes;
 
         // Countdown on number of generations that must still be computed
         // (i.e., number of exe futures left to be scheduled)
-        let mut gens_to_compute = nb_gens;
+        let mut gens_to_compute = n_gens;
 
         // Number of execution futures chained together in exe_future
-        let mut launch_cnt = min(nb_nodes, gens_to_compute);
+        let mut launch_cnt = min(n_nodes, gens_to_compute);
 
         // Launch command buffers
         let mut next_exe_node = start_node;
@@ -550,7 +548,7 @@ where
             }
 
             // Start reading back data and re-launch computations as needed
-            launch_cnt = min(nb_nodes, gens_to_compute);
+            launch_cnt = min(n_nodes, gens_to_compute);
             exe_future = now_future(Arc::clone(&self.device));
             loop {
                 match cpy_futures.pop_front() {
@@ -721,7 +719,7 @@ struct PushConstants {
     margin: u32,
 }
 
-const ERR_NB_NODES: &str = "The number of compute nodes should be strictly greater than 1.";
+const ERR_N_NODES: &str = "The number of compute nodes should be strictly greater than 1.";
 const ERR_DECODED_SIZE: &str =
     "The size of decoded data doesn't correspond to the indicated grid size.";
 const ERR_WRONG_DIMENSIONS: &str = "Both grids should be the same dimensions!";
