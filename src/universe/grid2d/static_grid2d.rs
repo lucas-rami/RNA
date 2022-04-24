@@ -1,5 +1,6 @@
 // Standard library
 use std::collections::{HashMap, VecDeque};
+use std::convert::TryInto;
 use std::sync::Arc;
 
 // External library
@@ -13,20 +14,17 @@ use vulkano::{
 };
 
 // Local
-use super::{Coordinates2D, Neighbor2D, Size2D};
+use super::{ILoc2D, Loc2D, Size2D};
 use crate::{
-    automaton::{AutomatonCell, CPUCell, GPUCell},
-    universe::{
-        CPUUniverse, GPUUniverse, GenerationDifference, ShaderInfo, Universe,
-        UniverseAutomatonShader,
-    },
+    automaton::{Cell, GPUCell},
+    universe::{GPUUniverse, GenerationDifference, ShaderInfo, Universe, UniverseAutomatonShader},
 };
 
 const DISPATCH_LAYOUT: (usize, usize, usize) = (8, 8, 1);
 
 /// StaticGrid2D
 
-pub struct StaticGrid2D<C: AutomatonCell> {
+pub struct StaticGrid2D<C: Cell> {
     data: Vec<C>,
     size: Size2D,
     size_with_margin: Size2D,
@@ -34,14 +32,14 @@ pub struct StaticGrid2D<C: AutomatonCell> {
     gpu: Option<GPUCompute<C>>,
 }
 
-impl<C: AutomatonCell<Neighbor = Neighbor2D>> StaticGrid2D<C> {
+impl<C: Cell<Location = ILoc2D>> StaticGrid2D<C> {
     pub fn new(data: Vec<C>, size: Size2D) -> Self {
         if data.len() != size.total() {
             panic!("{}", ERR_DIMENSIONS_SIZE)
         }
 
         // Determine the required margin around the actual data
-        let margin = Neighbor2D::max_one_axis_manhattan_distance(C::neighborhood());
+        let margin = 1;
         let size_with_margin = Size2D(size.columns() + (margin << 1), size.lines() + (margin << 1));
 
         // Create grid with margin
@@ -84,7 +82,7 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> StaticGrid2D<C> {
 
     pub fn new_empty(size: Size2D) -> Self {
         // Determine the required margin around the actual data
-        let margin = Neighbor2D::max_one_axis_manhattan_distance(C::neighborhood());
+        let margin = 1;
         let size_with_margin = Size2D(size.columns() + (margin << 1), size.lines() + (margin << 1));
 
         Self {
@@ -105,7 +103,7 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> StaticGrid2D<C> {
     }
 
     pub fn decode(encoded: Arc<CpuAccessibleBuffer<[C::Encoded]>>, size: Size2D) -> Self {
-        let margin = Neighbor2D::max_one_axis_manhattan_distance(C::neighborhood());
+        let margin = 1;
         let size_with_margin = Size2D(size.columns() + (margin << 1), size.lines() + (margin << 1));
         let total_size = size_with_margin.total();
 
@@ -138,51 +136,35 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> StaticGrid2D<C> {
     pub fn iter(&self) -> StaticGrid2DIterator<C> {
         StaticGrid2DIterator::new(self)
     }
+
+    #[inline]
+    fn convert_usize(loc: ILoc2D) -> Loc2D {
+        Loc2D::from(ILoc2D(loc.x() + 1, loc.y() + 1))
+    }
 }
 
-impl<C: AutomatonCell<Neighbor = Neighbor2D>> Universe for StaticGrid2D<C> {
+impl<C: Cell<Location = ILoc2D>> Universe for StaticGrid2D<C> {
     type Cell = C;
-    type Coordinates = Coordinates2D;
+    type Location = ILoc2D;
 
-    fn get(&self, coords: Self::Coordinates) -> Self::Cell {
-        let real_coords = Coordinates2D(coords.x() + self.margin, coords.y() + self.margin);
-        self.data[real_coords.to_idx(&self.size_with_margin)]
+    fn get(&self, loc: Self::Location) -> Self::Cell {
+        let real_loc = StaticGrid2D::<C>::convert_usize(loc);
+        self.data[real_loc.to_idx(&self.size_with_margin)]
     }
 
-    fn set(&mut self, coords: Self::Coordinates, val: Self::Cell) {
-        let real_coords = Coordinates2D(coords.x() + self.margin, coords.y() + self.margin);
-        self.data[real_coords.to_idx(&self.size_with_margin)] = val;
+    fn set(&mut self, loc: Self::Location, val: Self::Cell) {
+        let real_loc = StaticGrid2D::<C>::convert_usize(loc);
+        self.data[real_loc.to_idx(&self.size_with_margin)] = val;
     }
-    fn neighbor(
-        &self,
-        coords: Self::Coordinates,
-        nbor: <Self::Cell as AutomatonCell>::Neighbor,
-    ) -> Self::Cell {
-        let real_coords = Coordinates2D(coords.x() + self.margin, coords.y() + self.margin);
-        let mut idx = real_coords.to_idx(&self.size_with_margin);
-        if nbor.x() < 0 {
-            idx -= nbor.x().abs() as usize
-        } else {
-            idx += nbor.x() as usize
-        }
-        if nbor.y() < 0 {
-            idx -= nbor.y().abs() as usize * self.size_with_margin.columns()
-        } else {
-            idx += nbor.y() as usize * self.size_with_margin.columns()
-        }
-        self.data[idx]
-    }
-}
 
-impl<C: CPUCell<Neighbor = Neighbor2D>> CPUUniverse for StaticGrid2D<C> {
-    fn cpu_evolve_once(mut self) -> Self {
+    fn evolve_once(mut self) -> Self {
         // Compute new grid
         let mut new_data = vec![C::default(); self.size_with_margin.total()];
         for line_iter in self.iter() {
-            for (coords, cell) in line_iter {
-                let new_cell = cell.update(&self, coords);
-                let real_coords = Coordinates2D(coords.x() + self.margin, coords.y() + self.margin);
-                new_data[real_coords.to_idx(&self.size_with_margin)] = new_cell;
+            for (loc, cell) in line_iter {
+                let new_cell = cell.update(&self, loc);
+                let real_loc = StaticGrid2D::<C>::convert_usize(loc);
+                new_data[real_loc.to_idx(&self.size_with_margin)] = new_cell;
             }
         }
 
@@ -191,7 +173,7 @@ impl<C: CPUCell<Neighbor = Neighbor2D>> CPUUniverse for StaticGrid2D<C> {
     }
 }
 
-impl<C: GPUCell<Neighbor = Neighbor2D>> StaticGrid2D<C>
+impl<C: GPUCell<Location = ILoc2D>> StaticGrid2D<C>
 where
     StaticGrid2D<C>: UniverseAutomatonShader<C>,
 {
@@ -203,7 +185,7 @@ where
     }
 }
 
-impl<C: GPUCell<Neighbor = Neighbor2D>> GPUUniverse for StaticGrid2D<C>
+impl<C: GPUCell<Location = ILoc2D>> GPUUniverse for StaticGrid2D<C>
 where
     StaticGrid2D<C>: UniverseAutomatonShader<C>,
 {
@@ -216,7 +198,7 @@ where
     }
 }
 
-impl<C: AutomatonCell> Clone for StaticGrid2D<C> {
+impl<C: Cell> Clone for StaticGrid2D<C> {
     fn clone(&self) -> Self {
         Self {
             data: self.data.clone(),
@@ -230,18 +212,18 @@ impl<C: AutomatonCell> Clone for StaticGrid2D<C> {
 
 /// StaticGrid2DIterator
 
-pub struct StaticGrid2DIterator<'a, C: AutomatonCell> {
+pub struct StaticGrid2DIterator<'a, C: Cell> {
     grid: &'a StaticGrid2D<C>,
     line_idx: usize,
 }
 
-impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> StaticGrid2DIterator<'a, C> {
+impl<'a, C: Cell> StaticGrid2DIterator<'a, C> {
     fn new(grid: &'a StaticGrid2D<C>) -> Self {
         Self { grid, line_idx: 0 }
     }
 }
 
-impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> Iterator for StaticGrid2DIterator<'a, C> {
+impl<'a, C: Cell> Iterator for StaticGrid2DIterator<'a, C> {
     type Item = StaticGrid2DLineIterator<'a, C>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -257,30 +239,30 @@ impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> Iterator for StaticGrid2DItera
 
 /// StaticGrid2DLineIterator
 
-pub struct StaticGrid2DLineIterator<'a, C: AutomatonCell> {
+pub struct StaticGrid2DLineIterator<'a, C: Cell> {
     grid: &'a StaticGrid2D<C>,
-    coords: Coordinates2D,
+    loc: ILoc2D,
     idx: usize,
 }
 
-impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> StaticGrid2DLineIterator<'a, C> {
+impl<'a, C: Cell> StaticGrid2DLineIterator<'a, C> {
     pub fn new(grid: &'a StaticGrid2D<C>, line_idx: usize) -> Self {
         Self {
             grid,
-            coords: Coordinates2D(0, line_idx),
+            loc: ILoc2D(0, line_idx.try_into().unwrap()),
             idx: (line_idx + grid.margin) * grid.size_with_margin.columns() + grid.margin,
         }
     }
 }
 
-impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> Iterator for StaticGrid2DLineIterator<'a, C> {
-    type Item = (Coordinates2D, C);
+impl<'a, C: Cell> Iterator for StaticGrid2DLineIterator<'a, C> {
+    type Item = (ILoc2D, C);
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.coords.x() < self.grid.size.columns() {
-            let ret_coords = self.coords;
+        if self.loc.x() < self.grid.size.columns().try_into().unwrap() {
+            let ret_coords = self.loc;
             let cell = self.grid.data[self.idx];
-            self.coords.0 += 1;
+            self.loc.0 += 1;
             self.idx += 1;
             Some((ret_coords, cell))
         } else {
@@ -292,17 +274,17 @@ impl<'a, C: AutomatonCell<Neighbor = Neighbor2D>> Iterator for StaticGrid2DLineI
 /// GridDiff
 
 #[derive(Debug, Clone)]
-pub struct GridDiff<C: AutomatonCell> {
+pub struct GridDiff<C: Cell> {
     modifs: HashMap<usize, C>,
 }
 
-impl<C: AutomatonCell<Neighbor = Neighbor2D>> GridDiff<C> {
+impl<C: Cell> GridDiff<C> {
     pub fn iter(&self) -> impl Iterator<Item = (&usize, &C)> {
         self.modifs.iter()
     }
 }
 
-impl<C: AutomatonCell<Neighbor = Neighbor2D>> GenerationDifference for GridDiff<C> {
+impl<C: Cell<Location = ILoc2D>> GenerationDifference for GridDiff<C> {
     type Universe = StaticGrid2D<C>;
 
     fn get_diff(base: &Self::Universe, target: &Self::Universe) -> Self {
@@ -353,14 +335,14 @@ impl<C: AutomatonCell<Neighbor = Neighbor2D>> GenerationDifference for GridDiff<
 /// GPUCompute
 
 #[derive(Clone)]
-struct GPUCompute<C: AutomatonCell> {
+struct GPUCompute<C: Cell> {
     size: Size2D,
     device: Arc<Device>,
     nodes: Vec<ComputeNode<C>>,
     next: usize,
 }
 
-impl<C: GPUCell<Neighbor = Neighbor2D>> GPUCompute<C>
+impl<C: GPUCell<Location = ILoc2D>> GPUCompute<C>
 where
     StaticGrid2D<C>: UniverseAutomatonShader<C>,
 {
@@ -596,7 +578,7 @@ where
 /// ComputeNode
 
 #[derive(Clone)]
-struct ComputeNode<C: AutomatonCell> {
+struct ComputeNode<C: Cell> {
     device: Arc<Device>,
     queue: Arc<Queue>,
     cpu_out: Arc<CpuAccessibleBuffer<[C::Encoded]>>,
@@ -604,7 +586,7 @@ struct ComputeNode<C: AutomatonCell> {
     cmd_cpy: Arc<AutoCommandBuffer>,
 }
 
-impl<C: AutomatonCell> ComputeNode<C> {
+impl<C: Cell> ComputeNode<C> {
     fn new(
         grid: &StaticGrid2D<C>,
         shader: &ShaderInfo,

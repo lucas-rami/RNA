@@ -8,43 +8,30 @@ use vulkano::pipeline::ComputePipelineAbstract;
 
 // Local
 pub mod grid2d;
-use crate::automaton::{AutomatonCell, CPUCell, GPUCell};
+use crate::automaton::{Cell, GPUCell};
 
 pub trait Universe: Clone + Sized + Send + 'static {
-    type Cell: AutomatonCell;
-    type Coordinates: Clone;
+    type Cell: Cell;
+    type Location: Clone;
 
-    fn get(&self, coords: Self::Coordinates) -> Self::Cell;
+    fn get(&self, loc: Self::Location) -> Self::Cell;
 
-    fn set(&mut self, coords: Self::Coordinates, val: Self::Cell);
+    fn set(&mut self, loc: Self::Location, val: Self::Cell);
+    
+    fn evolve_once(self) -> Self;
 
-    fn neighbor(
-        &self,
-        coords: Self::Coordinates,
-        nbor: <Self::Cell as AutomatonCell>::Neighbor,
-    ) -> Self::Cell;
-}
-
-pub trait CPUUniverse: Universe
-where
-    Self::Cell: CPUCell,
-{
-    fn cpu_evolve(self, n_gens: usize) -> Self {
+    fn evolve(self, n_gens: usize) -> Self {
         let mut universe = self;
         for _ in 0..n_gens {
-            universe = universe.cpu_evolve_once();
+            universe = universe.evolve_once();
         }
         universe
     }
 
-    fn cpu_evolve_once(self) -> Self {
-        self.cpu_evolve(1)
-    }
-
-    fn cpu_evolve_callback(self, n_gens: usize, callback: impl Fn(&Self) -> ()) -> Self {
+    fn evolve_callback(self, n_gens: usize, callback: impl Fn(&Self) -> ()) -> Self {
         let mut universe = self;
         for _ in 0..n_gens {
-            universe = universe.cpu_evolve_once();
+            universe = universe.evolve_once();
             callback(&universe);
         }
         universe
@@ -55,9 +42,9 @@ pub trait GPUUniverse: Universe
 where
     Self::Cell: GPUCell,
 {
-    fn gpu_evolve(self, nb_gens: usize) -> Self {
+    fn gpu_evolve(self, n_gens: usize) -> Self {
         let mut universe = self;
-        for _ in 0..nb_gens {
+        for _ in 0..n_gens {
             universe = universe.gpu_evolve_once();
         }
         universe
@@ -67,9 +54,9 @@ where
         self.gpu_evolve(1)
     }
 
-    fn gpu_evolve_callback(self, nb_gens: usize, callback: impl Fn(&Self)) -> Self {
+    fn gpu_evolve_callback(self, n_gens: usize, callback: impl Fn(&Self)) -> Self {
         let mut universe = self;
-        for _ in 0..nb_gens {
+        for _ in 0..n_gens {
             universe = universe.gpu_evolve_once();
             callback(&universe);
         }
@@ -82,7 +69,7 @@ pub struct ShaderInfo {
     pub layout: Arc<UnsafeDescriptorSetLayout>,
     pub pipeline: Arc<Box<dyn ComputePipelineAbstract + Send + Sync + 'static>>,
 }
-pub trait UniverseAutomatonShader<C: AutomatonCell>: Universe<Cell = C> {
+pub trait UniverseAutomatonShader<C: Cell>: Universe<Cell = C> {
     fn shader_info(device: &Arc<Device>) -> ShaderInfo;
 }
 

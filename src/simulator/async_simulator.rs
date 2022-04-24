@@ -10,8 +10,8 @@ use crate::{
     advanced_channels::{
         oneway_channel, twoway_channel, MasterEndpoint, SimpleSender, TransmittingEnd,
     },
-    automaton::{CPUCell, GPUCell},
-    universe::{CPUUniverse, GPUUniverse, GenerationDifference, Universe},
+    automaton::{GPUCell},
+    universe::{GPUUniverse, GenerationDifference, Universe},
 };
 
 pub struct AsyncSimulator<U: Universe, D: GenerationDifference<Universe = U>> {
@@ -28,6 +28,38 @@ impl<U: Universe, D: GenerationDifference<Universe = U>> AsyncSimulator<U, D> {
         {
             HistoryResponse::GetGen(opt_universe) => opt_universe,
             _ => panic!("{}", ERR_INCORRECT_RESPONSE),
+        }
+    }
+
+    pub fn cpu_backend(start_universe: U, f_check: usize) -> Self {
+        // Create communication channels
+        let (runner_op_sender, runner_op_receiver) = oneway_channel();
+        let (history_master, history_slave) = twoway_channel();
+        let history_data_sender = history_master.create_third_party();
+    
+        // Start a thread to manage the universe's history
+        UniverseHistory::new(start_universe.clone(), f_check).detach(history_slave);
+    
+        // Start a thread to handle run commands
+        thread::spawn(move || {
+            let mut current_universe = start_universe;
+            let callback =
+                |universe: &U| history_data_sender.send(HistoryRequest::Push(universe.clone()));
+            loop {
+                match runner_op_receiver.wait_for_mail() {
+                    Ok(nb_gens) => {
+                        current_universe =
+                            U::evolve_callback(current_universe, nb_gens, callback)
+                    }
+                    Err(_) => break, // Simulator died, time to die
+                }
+            }
+        });
+    
+        Self {
+            runner_comm: runner_op_sender,
+            history_comm: history_master,
+            max_gen: 0,
         }
     }
 }
@@ -49,43 +81,6 @@ impl<U: Universe, D: GenerationDifference<Universe = U>> Simulator for AsyncSimu
             self.get_generation_blocking(gen, true)
         } else {
             None
-        }
-    }
-}
-
-impl<U: CPUUniverse, D: GenerationDifference<Universe = U>> AsyncSimulator<U, D>
-where
-    U::Cell: CPUCell,
-{
-    pub fn cpu_backend(start_universe: U, f_check: usize) -> Self {
-        // Create communication channels
-        let (runner_op_sender, runner_op_receiver) = oneway_channel();
-        let (history_master, history_slave) = twoway_channel();
-        let history_data_sender = history_master.create_third_party();
-
-        // Start a thread to manage the universe's history
-        UniverseHistory::new(start_universe.clone(), f_check).detach(history_slave);
-
-        // Start a thread to handle run commands
-        thread::spawn(move || {
-            let mut current_universe = start_universe;
-            let callback =
-                |universe: &U| history_data_sender.send(HistoryRequest::Push(universe.clone()));
-            loop {
-                match runner_op_receiver.wait_for_mail() {
-                    Ok(nb_gens) => {
-                        current_universe =
-                            U::cpu_evolve_callback(current_universe, nb_gens, callback)
-                    }
-                    Err(_) => break, // Simulator died, time to die
-                }
-            }
-        });
-
-        Self {
-            runner_comm: runner_op_sender,
-            history_comm: history_master,
-            max_gen: 0,
         }
     }
 }

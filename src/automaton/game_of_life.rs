@@ -3,15 +3,14 @@ use crossterm::style::{style, Attribute, Color, StyledContent};
 
 // Local
 use crate::{
-    automaton::{AutomatonCell, CPUCell, TermDrawableAutomaton},
+    automaton::{Cell, TermDrawableAutomaton},
     universe::{
         grid2d::{
             infinite_grid2d::InfiniteGrid2D,
-            SCoordinates2D,
-            {static_grid2d::StaticGrid2D, Coordinates2D, Size2D},
-            {Neighbor2D, MOORE_NEIGHBORHOOD},
+            ILoc2D,
+            {static_grid2d::StaticGrid2D, Size2D},
         },
-        {CPUUniverse, Universe},
+        Universe,
     },
 };
 
@@ -27,8 +26,8 @@ impl Default for GameOfLife {
     }
 }
 
-impl AutomatonCell for GameOfLife {
-    type Neighbor = Neighbor2D;
+impl Cell for GameOfLife {
+    type Location = ILoc2D;
     type Encoded = u32;
 
     fn encode(&self) -> Self::Encoded {
@@ -46,32 +45,43 @@ impl AutomatonCell for GameOfLife {
         }
     }
 
-    fn neighborhood() -> &'static [Self::Neighbor] {
-        &MOORE_NEIGHBORHOOD
+    fn neighborhood(loc: ILoc2D) -> Vec<ILoc2D> {
+        vec![
+            ILoc2D(loc.0, loc.1 - 1),
+            ILoc2D(loc.0 + 1, loc.1 - 1),
+            ILoc2D(loc.0 + 1, loc.1),
+            ILoc2D(loc.0 + 1, loc.1 + 1),
+            ILoc2D(loc.0, loc.1 + 1),
+            ILoc2D(loc.0 - 1, loc.1 + 1),
+            ILoc2D(loc.0 - 1, loc.1),
+            ILoc2D(loc.0 - 1, loc.1 - 1),
+        ]
     }
-}
 
-impl CPUCell for GameOfLife {
-    fn update<U: CPUUniverse<Cell = Self>>(&self, universe: &U, coords: U::Coordinates) -> Self {
+    fn update<U: Universe<Cell = Self, Location = Self::Location>>(
+        &self,
+        universe: &U,
+        loc: U::Location,
+    ) -> Self {
         // Count the number of alive cells around us
-        let mut nb_alive_neighbors = 0 as u32;
-        for nbor in Self::neighborhood() {
-            if let GameOfLife::Alive = universe.neighbor(coords.clone(), *nbor) {
-                nb_alive_neighbors += 1;
+        let mut n_alive_neighbors = 0 as u32;
+        for nbor in Self::neighborhood(loc) {
+            if let GameOfLife::Alive = universe.get(nbor) {
+                n_alive_neighbors += 1;
             }
         }
 
         // Apply the evolution rule
         match self {
             GameOfLife::Dead => {
-                if nb_alive_neighbors == 3 {
+                if n_alive_neighbors == 3 {
                     GameOfLife::Alive
                 } else {
                     GameOfLife::Dead
                 }
             }
             GameOfLife::Alive => {
-                if nb_alive_neighbors == 2 || nb_alive_neighbors == 3 {
+                if n_alive_neighbors == 2 || n_alive_neighbors == 3 {
                     GameOfLife::Alive
                 } else {
                     GameOfLife::Dead
@@ -92,14 +102,14 @@ impl TermDrawableAutomaton for GameOfLife {
 
 pub fn blinker() -> StaticGrid2D<GameOfLife> {
     let mut blinker = StaticGrid2D::new_empty(Size2D(5, 5));
-    blinker.set(Coordinates2D(1, 2), GameOfLife::Alive);
-    blinker.set(Coordinates2D(2, 2), GameOfLife::Alive);
-    blinker.set(Coordinates2D(3, 2), GameOfLife::Alive);
+    blinker.set(ILoc2D(1, 2), GameOfLife::Alive);
+    blinker.set(ILoc2D(2, 2), GameOfLife::Alive);
+    blinker.set(ILoc2D(3, 2), GameOfLife::Alive);
     blinker
 }
 
 pub fn is_blinker(grid: &StaticGrid2D<GameOfLife>, flipped: bool) -> bool {
-    let cell_is_valid = |pos: Coordinates2D, cell: GameOfLife| {
+    let cell_is_valid = |pos: ILoc2D, cell: GameOfLife| {
         if flipped {
             if pos.1 >= 1 && pos.1 <= 3 && pos.0 == 2 {
                 return cell == GameOfLife::Alive;
@@ -123,25 +133,25 @@ pub fn is_blinker(grid: &StaticGrid2D<GameOfLife>, flipped: bool) -> bool {
     true
 }
 
-const PENTA_DECATHLON_ALIVE_SET: [Coordinates2D; 18] = [
-    Coordinates2D(3, 6),
-    Coordinates2D(3, 7),
-    Coordinates2D(3, 8),
-    Coordinates2D(3, 9),
-    Coordinates2D(3, 10),
-    Coordinates2D(3, 11),
-    Coordinates2D(7, 6),
-    Coordinates2D(7, 7),
-    Coordinates2D(7, 8),
-    Coordinates2D(7, 9),
-    Coordinates2D(7, 10),
-    Coordinates2D(7, 11),
-    Coordinates2D(4, 5),
-    Coordinates2D(5, 4),
-    Coordinates2D(6, 5),
-    Coordinates2D(4, 12),
-    Coordinates2D(5, 13),
-    Coordinates2D(6, 12),
+const PENTA_DECATHLON_ALIVE_SET: [ILoc2D; 18] = [
+    ILoc2D(3, 6),
+    ILoc2D(3, 7),
+    ILoc2D(3, 8),
+    ILoc2D(3, 9),
+    ILoc2D(3, 10),
+    ILoc2D(3, 11),
+    ILoc2D(7, 6),
+    ILoc2D(7, 7),
+    ILoc2D(7, 8),
+    ILoc2D(7, 9),
+    ILoc2D(7, 10),
+    ILoc2D(7, 11),
+    ILoc2D(4, 5),
+    ILoc2D(5, 4),
+    ILoc2D(6, 5),
+    ILoc2D(4, 12),
+    ILoc2D(5, 13),
+    ILoc2D(6, 12),
 ];
 
 pub fn penta_decathlon() -> StaticGrid2D<GameOfLife> {
@@ -153,91 +163,87 @@ pub fn penta_decathlon() -> StaticGrid2D<GameOfLife> {
 }
 
 pub fn is_penta_decathlon(grid: &StaticGrid2D<GameOfLife>) -> bool {
-    let mut nb_alives = PENTA_DECATHLON_ALIVE_SET.len();
+    let mut n_alives = PENTA_DECATHLON_ALIVE_SET.len();
     for col_iter in grid.iter() {
         for (pos, cell) in col_iter {
             if cell == GameOfLife::Alive {
-                if PENTA_DECATHLON_ALIVE_SET.contains(&pos) && nb_alives != 0 {
-                    nb_alives -= 1;
+                if PENTA_DECATHLON_ALIVE_SET.contains(&pos) && n_alives != 0 {
+                    n_alives -= 1;
                 } else {
                     return false;
                 }
             }
         }
     }
-    nb_alives == 0
+    n_alives == 0
 }
 
-const LWSS_P0: [SCoordinates2D; 9] = [
-    SCoordinates2D(0, 0),
-    SCoordinates2D(3, 0),
-    SCoordinates2D(4, -1),
-    SCoordinates2D(0, -2),
-    SCoordinates2D(4, -2),
-    SCoordinates2D(1, -3),
-    SCoordinates2D(2, -3),
-    SCoordinates2D(3, -3),
-    SCoordinates2D(4, -3),
+const LWSS_P0: [ILoc2D; 9] = [
+    ILoc2D(0, 0),
+    ILoc2D(3, 0),
+    ILoc2D(4, -1),
+    ILoc2D(0, -2),
+    ILoc2D(4, -2),
+    ILoc2D(1, -3),
+    ILoc2D(2, -3),
+    ILoc2D(3, -3),
+    ILoc2D(4, -3),
 ];
 
-const LWSS_P1: [SCoordinates2D; 12] = [
-    SCoordinates2D(3, -1),
-    SCoordinates2D(4, -1),
-    SCoordinates2D(1, -2),
-    SCoordinates2D(2, -2),
-    SCoordinates2D(4, -2),
-    SCoordinates2D(5, -2),
-    SCoordinates2D(1, -3),
-    SCoordinates2D(2, -3),
-    SCoordinates2D(3, -3),
-    SCoordinates2D(4, -3),
-    SCoordinates2D(2, -4),
-    SCoordinates2D(3, -4),
+const LWSS_P1: [ILoc2D; 12] = [
+    ILoc2D(3, -1),
+    ILoc2D(4, -1),
+    ILoc2D(1, -2),
+    ILoc2D(2, -2),
+    ILoc2D(4, -2),
+    ILoc2D(5, -2),
+    ILoc2D(1, -3),
+    ILoc2D(2, -3),
+    ILoc2D(3, -3),
+    ILoc2D(4, -3),
+    ILoc2D(2, -4),
+    ILoc2D(3, -4),
 ];
 
-const LWSS_P2: [SCoordinates2D; 9] = [
-    SCoordinates2D(2, -1),
-    SCoordinates2D(3, -1),
-    SCoordinates2D(4, -1),
-    SCoordinates2D(5, -1),
-    SCoordinates2D(1, -2),
-    SCoordinates2D(5, -2),
-    SCoordinates2D(5, -3),
-    SCoordinates2D(1, -4),
-    SCoordinates2D(4, -4),
+const LWSS_P2: [ILoc2D; 9] = [
+    ILoc2D(2, -1),
+    ILoc2D(3, -1),
+    ILoc2D(4, -1),
+    ILoc2D(5, -1),
+    ILoc2D(1, -2),
+    ILoc2D(5, -2),
+    ILoc2D(5, -3),
+    ILoc2D(1, -4),
+    ILoc2D(4, -4),
 ];
 
-const LWSS_P3: [SCoordinates2D; 12] = [
-    SCoordinates2D(3, 0),
-    SCoordinates2D(4, 0),
-    SCoordinates2D(2, -1),
-    SCoordinates2D(3, -1),
-    SCoordinates2D(5, -1),
-    SCoordinates2D(5, -1),
-    SCoordinates2D(2, -2),
-    SCoordinates2D(3, -2),
-    SCoordinates2D(5, -2),
-    SCoordinates2D(6, -2),
-    SCoordinates2D(4, -3),
-    SCoordinates2D(5, -3),
+const LWSS_P3: [ILoc2D; 12] = [
+    ILoc2D(3, 0),
+    ILoc2D(4, 0),
+    ILoc2D(2, -1),
+    ILoc2D(3, -1),
+    ILoc2D(5, -1),
+    ILoc2D(5, -1),
+    ILoc2D(2, -2),
+    ILoc2D(3, -2),
+    ILoc2D(5, -2),
+    ILoc2D(6, -2),
+    ILoc2D(4, -3),
+    ILoc2D(5, -3),
 ];
 
-pub fn create_lwss(grid: &mut InfiniteGrid2D<GameOfLife>, base_coords: SCoordinates2D) {
+pub fn create_lwss(grid: &mut InfiniteGrid2D<GameOfLife>, base_coords: ILoc2D) {
     for c in &LWSS_P0 {
-        let cell_coords = SCoordinates2D(base_coords.x() + c.x(), base_coords.y() + c.y());
+        let cell_coords = ILoc2D(base_coords.x() + c.x(), base_coords.y() + c.y());
         grid.set(cell_coords, GameOfLife::Alive);
     }
 }
 
-pub fn check_lwss(
-    grid: &InfiniteGrid2D<GameOfLife>,
-    base_coords: SCoordinates2D,
-    gen: usize,
-) -> bool {
+pub fn check_lwss(grid: &InfiniteGrid2D<GameOfLife>, base_coords: ILoc2D, gen: usize) -> bool {
     // Compute new base coordinates and select correct phase
-    let nb_cycles = gen / 4;
+    let n_cycles = gen / 4;
     let phase_number = gen % 4;
-    let coords = SCoordinates2D(base_coords.x() + 2 * (nb_cycles as isize), base_coords.y());
+    let coords = ILoc2D(base_coords.x() + 2 * (n_cycles as isize), base_coords.y());
 
     // Check that the current phase is correct
     let phase = {
@@ -252,67 +258,10 @@ pub fn check_lwss(
         }
     };
     for c in phase {
-        let cell_coords = SCoordinates2D(coords.x() + c.x(), coords.y() + c.y());
+        let cell_coords = ILoc2D(coords.x() + c.x(), coords.y() + c.y());
         if grid.get(cell_coords) != GameOfLife::Alive {
             return false;
         }
     }
     true
 }
-
-// pub fn gosper_glider_gun() -> Grid<GameOfLife> {
-//     let mut grid = Grid::new(Dimensions::new(100, 50));
-//     grid = cascade!(
-//         grid;
-//         ..set(Position::new(1, 5), GameOfLife::Alive);
-//         ..set(Position::new(1, 6), GameOfLife::Alive);
-//         ..set(Position::new(2, 5), GameOfLife::Alive);
-//         ..set(Position::new(2, 6), GameOfLife::Alive);
-//         ..set(Position::new(11, 5), GameOfLife::Alive);
-//         ..set(Position::new(11, 6), GameOfLife::Alive);
-//         ..set(Position::new(11, 7), GameOfLife::Alive);
-//         ..set(Position::new(12, 4), GameOfLife::Alive);
-//         ..set(Position::new(12, 8), GameOfLife::Alive);
-//         ..set(Position::new(13, 3), GameOfLife::Alive);
-//         ..set(Position::new(13, 9), GameOfLife::Alive);
-//         ..set(Position::new(14, 3), GameOfLife::Alive);
-//         ..set(Position::new(14, 9), GameOfLife::Alive);
-//         ..set(Position::new(15, 6), GameOfLife::Alive);
-//         ..set(Position::new(16, 4), GameOfLife::Alive);
-//         ..set(Position::new(16, 8), GameOfLife::Alive);
-//         ..set(Position::new(17, 5), GameOfLife::Alive);
-//         ..set(Position::new(17, 6), GameOfLife::Alive);
-//         ..set(Position::new(17, 7), GameOfLife::Alive);
-//         ..set(Position::new(18, 6), GameOfLife::Alive);
-//         ..set(Position::new(21, 3), GameOfLife::Alive);
-//         ..set(Position::new(21, 4), GameOfLife::Alive);
-//         ..set(Position::new(21, 5), GameOfLife::Alive);
-//         ..set(Position::new(22, 3), GameOfLife::Alive);
-//         ..set(Position::new(22, 4), GameOfLife::Alive);
-//         ..set(Position::new(22, 5), GameOfLife::Alive);
-//         ..set(Position::new(23, 2), GameOfLife::Alive);
-//         ..set(Position::new(23, 6), GameOfLife::Alive);
-//         ..set(Position::new(25, 1), GameOfLife::Alive);
-//         ..set(Position::new(25, 2), GameOfLife::Alive);
-//         ..set(Position::new(25, 6), GameOfLife::Alive);
-//         ..set(Position::new(25, 7), GameOfLife::Alive);
-//         ..set(Position::new(35, 3), GameOfLife::Alive);
-//         ..set(Position::new(35, 4), GameOfLife::Alive);
-//         ..set(Position::new(36, 3), GameOfLife::Alive);
-//         ..set(Position::new(36, 4), GameOfLife::Alive);
-//     );
-//     grid
-// }
-
-// pub fn r_pentomino() -> Grid<GameOfLife> {
-//     let mut grid = Grid::new(Dimensions::new(201, 201));
-//     grid = cascade!(
-//         grid;
-//         ..set(Position::new(100, 99), GameOfLife::Alive);
-//         ..set(Position::new(101, 99), GameOfLife::Alive);
-//         ..set(Position::new(99, 100), GameOfLife::Alive);
-//         ..set(Position::new(100, 100), GameOfLife::Alive);
-//         ..set(Position::new(100, 101), GameOfLife::Alive);
-//     );
-//     grid
-// }

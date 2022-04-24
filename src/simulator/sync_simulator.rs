@@ -1,8 +1,8 @@
 // Local
 use super::{Simulator, UniverseHistory};
 use crate::{
-    automaton::{CPUCell, GPUCell},
-    universe::{CPUUniverse, GPUUniverse, GenerationDifference, Universe},
+    automaton::GPUCell,
+    universe::{GPUUniverse, GenerationDifference, Universe},
 };
 
 pub struct SyncSimulator<U: Universe, D: GenerationDifference<Universe = U>> {
@@ -20,6 +20,10 @@ impl<U: Universe, D: GenerationDifference<Universe = U>> SyncSimulator<U, D> {
             evolve_fn,
             max_gen: 0,
         }
+    }
+
+    pub fn cpu_backend(start_universe: U, f_check: usize) -> Self {
+        Self::new(start_universe, f_check, U::evolve_once)
     }
 }
 
@@ -43,15 +47,6 @@ impl<U: Universe, D: GenerationDifference<Universe = U>> Simulator for SyncSimul
 
     fn get_generation(&self, gen: usize) -> Option<Self::Universe> {
         self.history.get_gen(gen)
-    }
-}
-
-impl<U: CPUUniverse, D: GenerationDifference<Universe = U>> SyncSimulator<U, D>
-where
-    U::Cell: CPUCell,
-{
-    pub fn cpu_backend(start_universe: U, f_check: usize) -> Self {
-        Self::new(start_universe, f_check, U::cpu_evolve_once)
     }
 }
 
