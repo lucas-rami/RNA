@@ -17,21 +17,13 @@ pub trait Universe: Clone + Sized + Send + 'static {
     fn get(&self, loc: Self::Location) -> Self::Cell;
 
     fn set(&mut self, loc: Self::Location, val: Self::Cell);
+
+    fn evolve(self, n_gens: usize) -> Self;
     
-    fn evolve_once(self) -> Self;
-
-    fn evolve(self, n_gens: usize) -> Self {
-        let mut universe = self;
-        for _ in 0..n_gens {
-            universe = universe.evolve_once();
-        }
-        universe
-    }
-
     fn evolve_callback(self, n_gens: usize, callback: impl Fn(&Self) -> ()) -> Self {
         let mut universe = self;
         for _ in 0..n_gens {
-            universe = universe.evolve_once();
+            universe = universe.evolve(1);
             callback(&universe);
         }
         universe
@@ -42,22 +34,12 @@ pub trait GPUUniverse: Universe
 where
     Self::Cell: GPUCell,
 {
-    fn gpu_evolve(self, n_gens: usize) -> Self {
-        let mut universe = self;
-        for _ in 0..n_gens {
-            universe = universe.gpu_evolve_once();
-        }
-        universe
-    }
-
-    fn gpu_evolve_once(self) -> Self {
-        self.gpu_evolve(1)
-    }
+    fn gpu_evolve(self, n_gens: usize) -> Self;
 
     fn gpu_evolve_callback(self, n_gens: usize, callback: impl Fn(&Self)) -> Self {
         let mut universe = self;
         for _ in 0..n_gens {
-            universe = universe.gpu_evolve_once();
+            universe = universe.gpu_evolve(1);
             callback(&universe);
         }
         universe

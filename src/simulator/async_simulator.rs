@@ -10,7 +10,7 @@ use crate::{
     advanced_channels::{
         oneway_channel, twoway_channel, MasterEndpoint, SimpleSender, TransmittingEnd,
     },
-    automaton::{GPUCell},
+    automaton::GPUCell,
     universe::{GPUUniverse, GenerationDifference, Universe},
 };
 
@@ -36,10 +36,10 @@ impl<U: Universe, D: GenerationDifference<Universe = U>> AsyncSimulator<U, D> {
         let (runner_op_sender, runner_op_receiver) = oneway_channel();
         let (history_master, history_slave) = twoway_channel();
         let history_data_sender = history_master.create_third_party();
-    
+
         // Start a thread to manage the universe's history
         UniverseHistory::new(start_universe.clone(), f_check).detach(history_slave);
-    
+
         // Start a thread to handle run commands
         thread::spawn(move || {
             let mut current_universe = start_universe;
@@ -48,14 +48,13 @@ impl<U: Universe, D: GenerationDifference<Universe = U>> AsyncSimulator<U, D> {
             loop {
                 match runner_op_receiver.wait_for_mail() {
                     Ok(nb_gens) => {
-                        current_universe =
-                            U::evolve_callback(current_universe, nb_gens, callback)
+                        current_universe = U::evolve_callback(current_universe, nb_gens, callback)
                     }
                     Err(_) => break, // Simulator died, time to die
                 }
             }
         });
-    
+
         Self {
             runner_comm: runner_op_sender,
             history_comm: history_master,

@@ -8,12 +8,12 @@ use crate::{
 pub struct SyncSimulator<U: Universe, D: GenerationDifference<Universe = U>> {
     current_gen: U,
     history: UniverseHistory<U, D>,
-    evolve_fn: fn(U) -> U,
+    evolve_fn: fn(U, usize) -> U,
     max_gen: usize,
 }
 
 impl<U: Universe, D: GenerationDifference<Universe = U>> SyncSimulator<U, D> {
-    fn new(start_universe: U, f_check: usize, evolve_fn: fn(U) -> U) -> Self {
+    fn new(start_universe: U, f_check: usize, evolve_fn: fn(U, usize) -> U) -> Self {
         Self {
             current_gen: start_universe.clone(),
             history: UniverseHistory::new(start_universe, f_check),
@@ -23,7 +23,7 @@ impl<U: Universe, D: GenerationDifference<Universe = U>> SyncSimulator<U, D> {
     }
 
     pub fn cpu_backend(start_universe: U, f_check: usize) -> Self {
-        Self::new(start_universe, f_check, U::evolve_once)
+        Self::new(start_universe, f_check, U::evolve)
     }
 }
 
@@ -32,9 +32,9 @@ impl<U: Universe, D: GenerationDifference<Universe = U>> Simulator for SyncSimul
 
     fn run(&mut self, n_gens: usize) {
         let mut universe = self.current_gen.clone();
-        let evolve_once = self.evolve_fn;
+        let evolve = self.evolve_fn;
         for _ in 0..n_gens {
-            universe = evolve_once(universe);
+            universe = evolve(universe, 1);
             self.history.push(universe.clone());
         }
         self.current_gen = universe;
@@ -55,6 +55,6 @@ where
     U::Cell: GPUCell,
 {
     pub fn gpu_backend(start_universe: U, f_check: usize) -> Self {
-        Self::new(start_universe, f_check, U::gpu_evolve_once)
+        Self::new(start_universe, f_check, U::gpu_evolve)
     }
 }

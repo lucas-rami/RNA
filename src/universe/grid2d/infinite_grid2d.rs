@@ -5,10 +5,7 @@ use std::{
 };
 
 // Local
-use crate::{
-    automaton::{Cell, GPUCell},
-    universe::{GPUUniverse, Universe},
-};
+use crate::{automaton::Cell, universe::Universe};
 
 use super::{ILoc2D, Loc2D};
 
@@ -55,6 +52,41 @@ impl<C: Cell<Location = ILoc2D>> InfiniteGrid2D<C> {
         for coords in to_free {
             self.free_chunk(coords);
         }
+    }
+
+    fn evolve_once(mut self) -> Self {
+        let mut all_adjacent_chunks = HashSet::new();
+        for (_coords, chunk) in self.chunks.iter() {
+            // Ask each chunk to compute its next generation and collect set of adjacent
+            // chunks that need to be added to the universe
+            for adjacent_chunk_coords in chunk.compute_next_gen(&self) {
+                all_adjacent_chunks.insert(adjacent_chunk_coords);
+            }
+        }
+
+        // Actually update each chunk
+        for (_coords, chunk) in self.chunks.iter() {
+            chunk.swap_next_gen();
+        }
+
+        // Add all collected adjacent chunks to the universe
+        for chunk_coords in all_adjacent_chunks {
+            if !self.chunks.contains_key(&chunk_coords) {
+                if let Some(new_chunk) = self.create_chunk(chunk_coords) {
+                    self.chunks.insert(chunk_coords, new_chunk);
+                }
+            }
+        }
+
+        // Trigger garbage collection procedure at a fixed rate
+        self.gc_countdown -= 1;
+        if self.gc_countdown == 0 {
+            self.free_useless_chunks();
+            self.gc_countdown = GC_RATE;
+        }
+
+        // Return the updated universe
+        self
     }
 
     #[inline]
@@ -113,43 +145,14 @@ impl<C: Cell<Location = ILoc2D>> Universe for InfiniteGrid2D<C> {
         }
     }
 
-    fn evolve_once(mut self) -> Self {
-        let mut all_adjacent_chunks = HashSet::new();
-        for (_coords, chunk) in self.chunks.iter() {
-            // Ask each chunk to compute its next generation and collect set of adjacent
-            // chunks that need to be added to the universe
-            for adjacent_chunk_coords in chunk.compute_next_gen(&self) {
-                all_adjacent_chunks.insert(adjacent_chunk_coords);
-            }
+    fn evolve(self, n_gens: usize) -> Self {
+        let mut universe = self;
+        for _ in 0..n_gens {
+            universe = universe.evolve_once();
         }
-
-        // Actually update each chunk
-        for (_coords, chunk) in self.chunks.iter() {
-            chunk.swap_next_gen();
-        }
-
-        // Add all collected adjacent chunks to the universe
-        for chunk_coords in all_adjacent_chunks {
-            if !self.chunks.contains_key(&chunk_coords) {
-                if let Some(new_chunk) = self.create_chunk(chunk_coords) {
-                    self.chunks.insert(chunk_coords, new_chunk);
-                }
-            }
-        }
-
-        // Trigger garbage collection procedure at a fixed rate
-        self.gc_countdown -= 1;
-        if self.gc_countdown == 0 {
-            self.free_useless_chunks();
-            self.gc_countdown = GC_RATE;
-        }
-
-        // Return the updated universe
-        self
+        universe
     }
 }
-
-impl<C: GPUCell<Location = ILoc2D>> GPUUniverse for InfiniteGrid2D<C> {}
 
 /// Chunk
 
@@ -407,10 +410,7 @@ const ERR_SWAP_EMPTY: &str = "Tried to swap generation without computing a new o
 #[cfg(test)]
 mod tests {
     use super::InfiniteGrid2D;
-    use crate::{
-        automaton::game_of_life,
-        universe::{grid2d::ILoc2D, Universe},
-    };
+    use crate::{automaton::game_of_life, universe::grid2d::ILoc2D};
 
     #[test]
     fn cpu_evolution() {

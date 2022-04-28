@@ -137,6 +137,21 @@ impl<C: Cell<Location = ILoc2D>> StaticGrid2D<C> {
         StaticGrid2DIterator::new(self)
     }
 
+    fn evolve_once(mut self) -> Self {
+        // Compute new grid
+        let mut new_data = vec![C::default(); self.size_with_margin.total()];
+        for line_iter in self.iter() {
+            for (loc, cell) in line_iter {
+                let new_cell = cell.update(&self, loc);
+                let real_loc = StaticGrid2D::<C>::convert_usize(loc);
+                new_data[real_loc.to_idx(&self.size_with_margin)] = new_cell;
+            }
+        }
+
+        self.data = new_data;
+        self
+    }
+
     #[inline]
     fn convert_usize(loc: ILoc2D) -> Loc2D {
         Loc2D::from(ILoc2D(loc.x() + 1, loc.y() + 1))
@@ -157,19 +172,12 @@ impl<C: Cell<Location = ILoc2D>> Universe for StaticGrid2D<C> {
         self.data[real_loc.to_idx(&self.size_with_margin)] = val;
     }
 
-    fn evolve_once(mut self) -> Self {
-        // Compute new grid
-        let mut new_data = vec![C::default(); self.size_with_margin.total()];
-        for line_iter in self.iter() {
-            for (loc, cell) in line_iter {
-                let new_cell = cell.update(&self, loc);
-                let real_loc = StaticGrid2D::<C>::convert_usize(loc);
-                new_data[real_loc.to_idx(&self.size_with_margin)] = new_cell;
-            }
+    fn evolve(self, n_gens: usize) -> Self {
+        let mut universe = self;
+        for _ in 0..n_gens {
+            universe = universe.evolve_once();
         }
-
-        self.data = new_data;
-        self
+        universe
     }
 }
 
@@ -420,31 +428,28 @@ where
         };
 
         // Copy grid to first GPU buffer
-        {
-            let cpu_buf = CpuAccessibleBuffer::from_iter(
-                Arc::clone(&device),
-                BufferUsage::transfer_source(),
-                false,
-                grid.encode().into_iter(),
-            )
-            .unwrap();
-            let cmd = AutoCommandBufferBuilder::primary_one_time_submit(
-                Arc::clone(&device),
-                queue.family(),
-            )
-            .unwrap()
-            .copy_buffer(cpu_buf, gpu_bufs[0].clone())
-            .unwrap()
-            .build()
-            .unwrap();
-            sync::now(Arc::clone(&device))
-                .then_execute(Arc::clone(&queue), cmd)
+
+        let cpu_buf = CpuAccessibleBuffer::from_iter(
+            Arc::clone(&device),
+            BufferUsage::transfer_source(),
+            false,
+            grid.encode().into_iter(),
+        )
+        .unwrap();
+        let cmd =
+            AutoCommandBufferBuilder::primary_one_time_submit(Arc::clone(&device), queue.family())
                 .unwrap()
-                .then_signal_fence_and_flush()
+                .copy_buffer(cpu_buf, gpu_bufs[0].clone())
                 .unwrap()
-                .wait(None)
+                .build()
                 .unwrap();
-        }
+        sync::now(Arc::clone(&device))
+            .then_execute(Arc::clone(&queue), cmd)
+            .unwrap()
+            .then_signal_fence_and_flush()
+            .unwrap()
+            .wait(None)
+            .unwrap();
 
         // Create and store new GPUCompute instance
         Self {
@@ -510,7 +515,7 @@ where
         // Launch command buffers
         let mut next_exe_node = start_node;
         let mut exe_future = now_future(Arc::clone(&self.device));
-        for _i in 0..launch_cnt {
+        for _ in 0..launch_cnt {
             exe_future = Box::new(self.nodes[next_exe_node].exe(exe_future));
             next_exe_node = self.wrap_ptr(next_exe_node)
         }

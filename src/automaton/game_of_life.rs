@@ -3,7 +3,7 @@ use crossterm::style::{style, Attribute, Color, StyledContent};
 
 // Local
 use crate::{
-    automaton::{Cell, TermDrawableAutomaton},
+    automaton::{Cell, TermDrawableAutomaton, moore_neighborhood},
     universe::{
         grid2d::{
             infinite_grid2d::InfiniteGrid2D,
@@ -45,17 +45,8 @@ impl Cell for GameOfLife {
         }
     }
 
-    fn neighborhood(loc: ILoc2D) -> Vec<ILoc2D> {
-        vec![
-            ILoc2D(loc.0, loc.1 - 1),
-            ILoc2D(loc.0 + 1, loc.1 - 1),
-            ILoc2D(loc.0 + 1, loc.1),
-            ILoc2D(loc.0 + 1, loc.1 + 1),
-            ILoc2D(loc.0, loc.1 + 1),
-            ILoc2D(loc.0 - 1, loc.1 + 1),
-            ILoc2D(loc.0 - 1, loc.1),
-            ILoc2D(loc.0 - 1, loc.1 - 1),
-        ]
+    fn neighborhood(loc: Self::Location) -> Vec<Self::Location> {
+        moore_neighborhood(loc)
     }
 
     fn update<U: Universe<Cell = Self, Location = Self::Location>>(
